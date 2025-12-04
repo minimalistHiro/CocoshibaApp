@@ -1,4 +1,4 @@
-package com.example.cocoshiba_app
+package com.groumap.cocoshiba
 
 import io.flutter.embedding.android.FlutterActivity
 

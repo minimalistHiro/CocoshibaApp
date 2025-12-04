@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "618793511488",
+    "project_id": "cocoshibaapp",
+    "storage_bucket": "cocoshibaapp.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:618793511488:android:bdb6738ff2be7526520da5",
+        "android_client_info": {
+          "package_name": "com.groumap.cocoshiba"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyD7RYxgZLOaTab0nKw42PPmHZ5yir9h-UQ"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
