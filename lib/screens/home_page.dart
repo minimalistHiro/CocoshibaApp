@@ -22,29 +22,10 @@ class HomePage extends StatelessWidget {
             Row(
               children: [
                 Image.asset(
-                  'assets/images/cocoshiba_logo.png',
+                  'assets/images/cocoshiba_logo_g.png',
                   height: 48,
-                  width: 48,
                 ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'Antenna Books & Cafe',
-                        style: Theme.of(context).textTheme.labelMedium,
-                      ),
-                      Text(
-                        'ココシバ',
-                        style: Theme.of(context)
-                            .textTheme
-                            .titleLarge
-                            ?.copyWith(fontWeight: FontWeight.bold),
-                      ),
-                    ],
-                  ),
-                ),
+                const Spacer(),
                 IconButton(
                   onPressed: () => _showNotification(context),
                   icon: const Icon(Icons.notifications_outlined),
