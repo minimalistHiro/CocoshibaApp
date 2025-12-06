@@ -22,7 +22,7 @@ class AccountPage extends StatelessWidget {
     final email = user?.email ?? '未ログイン';
 
     return SafeArea(
-      child: Padding(
+      child: SingleChildScrollView(
         padding: const EdgeInsets.all(24),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -63,7 +63,7 @@ class AccountPage extends StatelessWidget {
                 trailing: const Icon(Icons.chevron_right),
               ),
             ),
-            const Spacer(),
+            const SizedBox(height: 48),
             FilledButton.icon(
               onPressed: () => _logout(context),
               icon: const Icon(Icons.logout),

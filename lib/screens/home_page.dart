@@ -14,47 +14,44 @@ class HomePage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return SafeArea(
-      child: SingleChildScrollView(
+      child: ListView(
         padding: const EdgeInsets.all(24),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Image.asset(
-                  'assets/images/cocoshiba_logo_g.png',
-                  height: 48,
-                ),
-                const Spacer(),
-                IconButton(
-                  onPressed: () => _showNotification(context),
-                  icon: const Icon(Icons.notifications_outlined),
-                ),
-              ],
-            ),
-            const SizedBox(height: 32),
-            PointCard(
-              points: 3003,
-              onRefresh: () => _showNotification(context),
-            ),
-            const SizedBox(height: 32),
-            Text(
-              'ショートカット',
-              style: Theme.of(context).textTheme.titleMedium,
-            ),
-            const SizedBox(height: 12),
-            const Wrap(
-              spacing: 12,
-              runSpacing: 12,
-              children: [
-                _MenuButton(icon: Icons.qr_code, label: 'QR コード'),
-                _MenuButton(icon: Icons.send, label: '送る'),
-                _MenuButton(icon: Icons.leaderboard_outlined, label: 'ランキング'),
-                _MenuButton(icon: Icons.storefront_outlined, label: '本日の獲得'),
-              ],
-            ),
-          ],
-        ),
+        children: [
+          Row(
+            children: [
+              Image.asset(
+                'assets/images/cocoshiba_logo_g.png',
+                height: 48,
+              ),
+              const Spacer(),
+              IconButton(
+                onPressed: () => _showNotification(context),
+                icon: const Icon(Icons.notifications_outlined),
+              ),
+            ],
+          ),
+          const SizedBox(height: 32),
+          PointCard(
+            points: 3003,
+            onRefresh: () => _showNotification(context),
+          ),
+          const SizedBox(height: 32),
+          Text(
+            'ショートカット',
+            style: Theme.of(context).textTheme.titleMedium,
+          ),
+          const SizedBox(height: 12),
+          const Wrap(
+            spacing: 12,
+            runSpacing: 12,
+            children: [
+              _MenuButton(icon: Icons.qr_code, label: 'QR コード'),
+              _MenuButton(icon: Icons.send, label: '送る'),
+              _MenuButton(icon: Icons.leaderboard_outlined, label: 'ランキング'),
+              _MenuButton(icon: Icons.storefront_outlined, label: '本日の獲得'),
+            ],
+          ),
+        ],
       ),
     );
   }

@@ -75,24 +75,30 @@ class _MainTabScaffoldState extends State<MainTabScaffold> {
       bottomNavigationBar: BottomAppBar(
         shape: const CircularNotchedRectangle(),
         color: Colors.white,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-          child: Row(
-            children: [
-              Expanded(
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                  children: tabs.take(2).toList(),
-                ),
+        child: SafeArea(
+          top: false,
+          child: SizedBox(
+            height: 68,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                      children: tabs.take(2).toList(),
+                    ),
+                  ),
+                  const SizedBox(width: 64),
+                  Expanded(
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                      children: tabs.skip(2).toList(),
+                    ),
+                  ),
+                ],
               ),
-              const SizedBox(width: 64),
-              Expanded(
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                  children: tabs.skip(2).toList(),
-                ),
-              ),
-            ],
+            ),
           ),
         ),
       ),
