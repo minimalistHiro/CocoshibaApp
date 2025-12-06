@@ -1,10 +1,15 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 
 class FirebaseAuthService {
-  FirebaseAuthService({FirebaseAuth? firebaseAuth})
-      : _auth = firebaseAuth ?? FirebaseAuth.instance;
+  FirebaseAuthService({
+    FirebaseAuth? firebaseAuth,
+    FirebaseFirestore? firestore,
+  })  : _auth = firebaseAuth ?? FirebaseAuth.instance,
+        _firestore = firestore ?? FirebaseFirestore.instance;
 
   final FirebaseAuth _auth;
+  final FirebaseFirestore _firestore;
 
   User? get currentUser => _auth.currentUser;
 
@@ -18,7 +23,19 @@ class FirebaseAuthService {
       password: password.trim(),
     );
 
-    await credential.user?.updateDisplayName(name.trim());
+    final trimmedName = name.trim();
+    final trimmedEmail = email.trim();
+
+    final user = credential.user;
+    await user?.updateDisplayName(trimmedName);
+    if (user != null) {
+      await _firestore.collection('users').doc(user.uid).set({
+        'name': trimmedName,
+        'email': trimmedEmail,
+        'createdAt': FieldValue.serverTimestamp(),
+      });
+    }
+
     return credential;
   }
 

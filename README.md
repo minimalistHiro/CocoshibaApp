@@ -17,6 +17,7 @@ Flutter/Material 3 で構築した、Antenna Books & Cafe ココシバの会員�
   - `android/app/google-services.json`
 - `firebase_core`, `firebase_auth`, `cloud_firestore` を `pubspec.yaml` に追加済みです。
   - Firestore 連携画面は未実装ですが、今後の拡張で利用できます。
+  - Firestore ルールは `firebase/firestore.rules` に定義しているので、`firebase deploy --only firestore:rules` を実行して反映してください（認証済みユーザーのみ `users/{uid}` を更新可能にするルールです）。
 
 ## ディレクトリ構成（抜粋）
 ```

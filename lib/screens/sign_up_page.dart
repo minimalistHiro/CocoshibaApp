@@ -46,9 +46,15 @@ class _SignUpPageState extends State<SignUpPage> {
         (route) => false,
       );
     } on FirebaseAuthException catch (e) {
-      _showError(e.message ?? 'アカウント作成に失敗しました');
-    } catch (_) {
-      _showError('アカウント作成に失敗しました');
+      debugPrint(
+        'SignUp FirebaseAuthException code=${e.code}, message=${e.message}',
+      );
+      final message = e.message ?? 'アカウント作成に失敗しました';
+      _showError('[${e.code}] $message');
+    } catch (e, stackTrace) {
+      debugPrint('SignUp unexpected error: $e');
+      debugPrint('$stackTrace');
+      _showError('アカウント作成に失敗しました（詳細はデバッグログ参照）');
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
