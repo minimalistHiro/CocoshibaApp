@@ -2,7 +2,6 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
 import '../services/firebase_auth_service.dart';
-import 'main_tab_scaffold.dart';
 import 'sign_up_page.dart';
 
 class LoginPage extends StatefulWidget {
@@ -40,10 +39,7 @@ class _LoginPageState extends State<LoginPage> {
       );
 
       if (!mounted) return;
-      Navigator.of(context).pushAndRemoveUntil(
-        MaterialPageRoute(builder: (_) => const MainTabScaffold()),
-        (route) => false,
-      );
+      Navigator.of(context).popUntil((route) => route.isFirst);
     } on FirebaseAuthException catch (e) {
       _showError(e.message ?? 'ログインに失敗しました');
     } catch (_) {

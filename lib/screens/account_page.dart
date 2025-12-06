@@ -10,8 +10,34 @@ class AccountPage extends StatelessWidget {
     try {
       await FirebaseAuthService().signOut();
       messenger.showSnackBar(const SnackBar(content: Text('ログアウトしました')));
+      Navigator.of(context).popUntil((route) => route.isFirst);
     } catch (_) {
       messenger.showSnackBar(const SnackBar(content: Text('ログアウトに失敗しました')));
+    }
+  }
+
+  Future<void> _confirmAndLogout(BuildContext context) async {
+    final shouldLogout = await showDialog<bool>(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: const Text('確認'),
+            content: const Text('ログアウトしますか？'),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(false),
+                child: const Text('キャンセル'),
+              ),
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(true),
+                child: const Text('ログアウト'),
+              ),
+            ],
+          ),
+        ) ??
+        false;
+
+    if (shouldLogout) {
+      await _logout(context);
     }
   }
 
@@ -65,7 +91,7 @@ class AccountPage extends StatelessWidget {
             ),
             const SizedBox(height: 48),
             FilledButton.icon(
-              onPressed: () => _logout(context),
+              onPressed: () => _confirmAndLogout(context),
               icon: const Icon(Icons.logout),
               label: const Text('ログアウト'),
               style: FilledButton.styleFrom(

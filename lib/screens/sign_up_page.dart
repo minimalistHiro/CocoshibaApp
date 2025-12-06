@@ -2,7 +2,6 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
 import '../services/firebase_auth_service.dart';
-import 'main_tab_scaffold.dart';
 
 class SignUpPage extends StatefulWidget {
   const SignUpPage({super.key});
@@ -41,10 +40,7 @@ class _SignUpPageState extends State<SignUpPage> {
       );
 
       if (!mounted) return;
-      Navigator.of(context).pushAndRemoveUntil(
-        MaterialPageRoute(builder: (_) => const MainTabScaffold()),
-        (route) => false,
-      );
+      Navigator.of(context).popUntil((route) => route.isFirst);
     } on FirebaseAuthException catch (e) {
       debugPrint(
         'SignUp FirebaseAuthException code=${e.code}, message=${e.message}',
