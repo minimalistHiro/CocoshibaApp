@@ -1,5 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 
+import 'package:flutter/material.dart';
+
 class CalendarEvent {
   CalendarEvent({
     required this.id,
@@ -9,6 +11,7 @@ class CalendarEvent {
     required this.endDateTime,
     required this.content,
     required this.imageUrls,
+    required this.colorValue,
   });
 
   final String id;
@@ -18,6 +21,9 @@ class CalendarEvent {
   final DateTime endDateTime;
   final String content;
   final List<String> imageUrls;
+  final int colorValue;
+
+  Color get color => Color(colorValue);
 
   factory CalendarEvent.fromDocument(
     DocumentSnapshot<Map<String, dynamic>> doc,
@@ -40,6 +46,7 @@ class CalendarEvent {
               ?.map((e) => e.toString())
               .toList() ??
           const [],
+      colorValue: (data['colorValue'] as int?) ?? Colors.blue.value,
     );
   }
 
@@ -51,6 +58,7 @@ class CalendarEvent {
       'endDateTime': Timestamp.fromDate(endDateTime),
       'content': content,
       'imageUrls': imageUrls,
+      'colorValue': colorValue,
     };
   }
 }

@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import '../models/calendar_event.dart';
 import '../services/event_service.dart';
 import 'create_event_page.dart';
+import 'event_detail_page.dart';
 
 class CalendarPage extends StatefulWidget {
   const CalendarPage({super.key});
@@ -75,6 +76,12 @@ class _CalendarPageState extends State<CalendarPage> {
   void _openCreateEvent() {
     Navigator.of(context).push(
       MaterialPageRoute(builder: (_) => const CreateEventPage()),
+    );
+  }
+
+  void _openEventDetail(CalendarEvent event) {
+    Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => EventDetailPage(event: event)),
     );
   }
 
@@ -194,6 +201,8 @@ class _CalendarPageState extends State<CalendarPage> {
                                 child: _MonthGrid(
                                   month: month,
                                   selectedDate: _selectedDate,
+                                  eventsForMonth:
+                                      _eventsForMonth(eventsByDate, month),
                                   onSelectDate: (date) {
                                     setState(() => _selectedDate = date);
                                   },
@@ -216,6 +225,7 @@ class _CalendarPageState extends State<CalendarPage> {
                       weekdayLabel: _weekdayLabel,
                       isLoading:
                           snapshot.connectionState == ConnectionState.waiting,
+                      onTap: _openEventDetail,
                     ),
                   ),
                 ],
@@ -248,6 +258,22 @@ class _CalendarPageState extends State<CalendarPage> {
 
   String _dateKey(DateTime date) {
     return '${date.year.toString().padLeft(4, '0')}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
+  }
+
+  Map<int, List<CalendarEvent>> _eventsForMonth(
+    Map<String, List<CalendarEvent>> grouped,
+    DateTime month,
+  ) {
+    final Map<int, List<CalendarEvent>> result = {};
+    final daysInMonth = DateUtils.getDaysInMonth(month.year, month.month);
+    for (int day = 1; day <= daysInMonth; day++) {
+      final date = DateTime(month.year, month.month, day);
+      final events = grouped[_dateKey(date)];
+      if (events != null && events.isNotEmpty) {
+        result[day] = events;
+      }
+    }
+    return result;
   }
 
   String _weekdayLabel(int weekday) {
@@ -291,11 +317,13 @@ class _MonthGrid extends StatelessWidget {
     required this.month,
     required this.selectedDate,
     required this.onSelectDate,
+    required this.eventsForMonth,
   });
 
   final DateTime month;
   final DateTime? selectedDate;
   final ValueChanged<DateTime> onSelectDate;
+  final Map<int, List<CalendarEvent>> eventsForMonth;
 
   @override
   Widget build(BuildContext context) {
@@ -315,9 +343,9 @@ class _MonthGrid extends StatelessWidget {
       physics: const NeverScrollableScrollPhysics(),
       gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
         crossAxisCount: 7,
-        crossAxisSpacing: 8,
-        mainAxisSpacing: 8,
-        childAspectRatio: 0.65,
+        crossAxisSpacing: 2,
+        mainAxisSpacing: 2,
+        childAspectRatio: 0.7,
       ),
       itemCount: totalCells,
       itemBuilder: (context, index) {
@@ -338,7 +366,9 @@ class _MonthGrid extends StatelessWidget {
             ? Colors.transparent
             : isToday
                 ? Colors.lightBlue.shade50
-                : Colors.grey.shade100;
+                : Colors.white;
+
+        final events = isInMonth ? eventsForMonth[dayNumber] ?? const [] : const [];
 
         Widget cellContent = DecoratedBox(
           decoration: BoxDecoration(
@@ -361,14 +391,40 @@ class _MonthGrid extends StatelessWidget {
                     fontWeight: FontWeight.w600,
                   ),
                 ),
-                const SizedBox(height: 10),
-                Column(
-                  children: [
-                    _schedulePlaceholder(isInMonth, theme, height: 10),
-                    const SizedBox(height: 6),
-                    _schedulePlaceholder(isInMonth, theme, height: 10),
-                  ],
-                ),
+                const SizedBox(height: 4),
+                if (events.isNotEmpty)
+                  Column(
+                    children: events
+                        .take(2)
+                        .map(
+                          (event) => Padding(
+                            padding: const EdgeInsets.only(bottom: 2),
+                            child: Container(
+                              width: double.infinity,
+                              padding: const EdgeInsets.symmetric(
+                                vertical: 2,
+                                horizontal: 6,
+                              ),
+                              decoration: BoxDecoration(
+                                color: event.color.withOpacity(0.15),
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: Text(
+                                event.name,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: theme.textTheme.bodySmall?.copyWith(
+                                  fontSize: 10,
+                                  color: event.color.withOpacity(0.9),
+                                ),
+                              ),
+                            ),
+                          ),
+                        )
+                        .toList(),
+                  )
+                else
+                  const SizedBox(height: 20),
               ],
             ),
           ),
@@ -393,12 +449,14 @@ class _EventList extends StatelessWidget {
     required this.events,
     required this.weekdayLabel,
     required this.isLoading,
+    required this.onTap,
   });
 
   final DateTime? selectedDate;
   final List<CalendarEvent> events;
   final String Function(int weekday) weekdayLabel;
   final bool isLoading;
+  final void Function(CalendarEvent event) onTap;
 
   @override
   Widget build(BuildContext context) {
@@ -440,16 +498,24 @@ class _EventList extends StatelessWidget {
           Column(
             children: events
                 .map(
-                  (event) => Container(
-                    width: double.infinity,
-                    margin: const EdgeInsets.only(bottom: 8),
-                    padding:
-                        const EdgeInsets.symmetric(vertical: 14, horizontal: 18),
-                    decoration: BoxDecoration(
-                      color: Colors.blue.shade50,
-                      borderRadius: BorderRadius.circular(12),
+                  (event) => GestureDetector(
+                    onTap: () => onTap(event),
+                    child: Container(
+                      width: double.infinity,
+                      margin: const EdgeInsets.only(bottom: 8),
+                      padding: const EdgeInsets.symmetric(
+                        vertical: 14,
+                        horizontal: 18,
+                      ),
+                      decoration: BoxDecoration(
+                        color: event.color.withOpacity(0.15),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(
+                          color: event.color.withOpacity(0.4),
+                        ),
+                      ),
+                      child: _EventTile(event: event),
                     ),
-                    child: _EventTile(event: event),
                   ),
                 )
                 .toList(),
@@ -472,68 +538,42 @@ class _EventTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Column(
+    return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Icon(Icons.event, color: Colors.blue),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    event.name,
-                    style: Theme.of(context)
-                        .textTheme
-                        .titleSmall
-                        ?.copyWith(fontWeight: FontWeight.bold),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    '主催: ${event.organizer.isNotEmpty ? event.organizer : '未設定'} / 時間: $_timeLabel',
-                    style: Theme.of(context).textTheme.bodySmall,
-                  ),
-                  if (event.content.isNotEmpty) ...[
-                    const SizedBox(height: 6),
-                    Text(
-                      event.content,
-                      style: Theme.of(context).textTheme.bodyMedium,
-                    ),
-                  ],
-                ],
+        Icon(Icons.event, color: event.color),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                event.name,
+                style: Theme.of(context)
+                    .textTheme
+                    .titleSmall
+                    ?.copyWith(fontWeight: FontWeight.bold),
               ),
-            ),
-          ],
-        ),
-        if (event.imageUrls.isNotEmpty) ...[
-          const SizedBox(height: 12),
-          Wrap(
-            spacing: 12,
-            runSpacing: 12,
-            children: event.imageUrls
-                .map(
-                  (url) => ClipRRect(
-                    borderRadius: BorderRadius.circular(12),
-                    child: SizedBox(
-                      width: 88,
-                      height: 88,
-                      child: Image.network(
-                        url,
-                        fit: BoxFit.cover,
-                        errorBuilder: (context, error, stackTrace) => Container(
-                          color: Colors.grey.shade200,
-                          child: const Icon(Icons.broken_image),
-                        ),
-                      ),
-                    ),
-                  ),
-                )
-                .toList(),
+              const SizedBox(height: 4),
+              Text(
+                '主催: ${event.organizer.isNotEmpty ? event.organizer : '未設定'} / 時間: $_timeLabel',
+                style: Theme.of(context)
+                    .textTheme
+                    .bodySmall
+                    ?.copyWith(color: event.color),
+              ),
+              if (event.content.isNotEmpty) ...[
+                const SizedBox(height: 6),
+                Text(
+                  event.content,
+                  style: Theme.of(context).textTheme.bodyMedium,
+                  maxLines: 3,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ],
+            ],
           ),
-        ],
+        ),
       ],
     );
   }

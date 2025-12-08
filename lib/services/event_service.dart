@@ -26,6 +26,7 @@ class EventService {
     required DateTime endDateTime,
     required String content,
     required List<XFile> images,
+    required int colorValue,
   }) async {
     final docRef = _eventsRef.doc();
     final List<String> imageUrls = [];
@@ -50,8 +51,27 @@ class EventService {
       'endDateTime': Timestamp.fromDate(endDateTime),
       'content': content,
       'imageUrls': imageUrls,
+      'colorValue': colorValue,
       'createdAt': FieldValue.serverTimestamp(),
     });
+  }
+
+  Future<void> deleteEvent(CalendarEvent event) async {
+    final docRef = _eventsRef.doc(event.id);
+    final snapshot = await docRef.get();
+    if (!snapshot.exists) return;
+
+    final List<dynamic>? urls = snapshot.data()?['imageUrls'] as List<dynamic>?;
+    if (urls != null) {
+      for (final url in urls) {
+        try {
+          await _storage.refFromURL(url.toString()).delete();
+        } catch (_) {
+          // ignore failures for cleanup
+        }
+      }
+    }
+    await docRef.delete();
   }
 
   Stream<List<CalendarEvent>> watchEvents(

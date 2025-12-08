@@ -13,6 +13,20 @@ class CreateEventPage extends StatefulWidget {
 }
 
 class _CreateEventPageState extends State<CreateEventPage> {
+  static const List<Color> _colorPalette = [
+    Color(0xFFEF5350),
+    Color(0xFFF06292),
+    Color(0xFFAB47BC),
+    Color(0xFF7E57C2),
+    Color(0xFF5C6BC0),
+    Color(0xFF42A5F5),
+    Color(0xFF26A69A),
+    Color(0xFF66BB6A),
+    Color(0xFFFFCA28),
+    Color(0xFFFFA726),
+    Color(0xFFFF7043),
+    Color(0xFF8D6E63),
+  ];
   final _formKey = GlobalKey<FormState>();
   final _nameController = TextEditingController();
   final _organizerController = TextEditingController();
@@ -28,6 +42,7 @@ class _CreateEventPageState extends State<CreateEventPage> {
   TimeOfDay? _endTime;
   final List<XFile> _images = [];
   bool _isSubmitting = false;
+  int _selectedColorIndex = 5;
 
   @override
   void dispose() {
@@ -161,6 +176,7 @@ class _CreateEventPageState extends State<CreateEventPage> {
         endDateTime: endDateTime,
         content: _contentController.text.trim(),
         images: _images,
+        colorValue: _colorPalette[_selectedColorIndex].value,
       );
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -262,6 +278,14 @@ class _CreateEventPageState extends State<CreateEventPage> {
                 ),
                 validator: (value) =>
                     value == null || value.isEmpty ? 'イベント内容を入力してください' : null,
+              ),
+              const SizedBox(height: 24),
+              _ColorSelector(
+                palette: _colorPalette,
+                selectedIndex: _selectedColorIndex,
+                onSelect: (index) {
+                  setState(() => _selectedColorIndex = index);
+                },
               ),
               const SizedBox(height: 24),
               _ImagePickerGrid(
@@ -375,6 +399,58 @@ class _ImagePickerGrid extends StatelessWidget {
                 ),
               ),
           ],
+        ),
+      ],
+    );
+  }
+}
+
+class _ColorSelector extends StatelessWidget {
+  const _ColorSelector({
+    required this.palette,
+    required this.selectedIndex,
+    required this.onSelect,
+  });
+
+  final List<Color> palette;
+  final int selectedIndex;
+  final ValueChanged<int> onSelect;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'イベントカラー',
+          style: Theme.of(context).textTheme.titleSmall,
+        ),
+        const SizedBox(height: 12),
+        Wrap(
+          spacing: 12,
+          runSpacing: 12,
+          children: List.generate(
+            palette.length,
+            (index) {
+              final color = palette[index];
+              final isSelected = index == selectedIndex;
+              return GestureDetector(
+                onTap: () => onSelect(index),
+                child: Container(
+                  width: 44,
+                  height: 44,
+                  decoration: BoxDecoration(
+                    color: color,
+                    borderRadius: BorderRadius.circular(22),
+                    border: Border.all(
+                      color: isSelected ? Colors.black : Colors.white,
+                      width: isSelected ? 3 : 1,
+                    ),
+                  ),
+                ),
+              );
+            },
+          ),
         ),
       ],
     );
