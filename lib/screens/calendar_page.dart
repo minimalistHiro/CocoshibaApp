@@ -2,7 +2,9 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
-import '../services/firebase_auth_service.dart';
+import '../models/calendar_event.dart';
+import '../services/event_service.dart';
+import 'create_event_page.dart';
 
 class CalendarPage extends StatefulWidget {
   const CalendarPage({super.key});
@@ -15,9 +17,9 @@ class _CalendarPageState extends State<CalendarPage> {
   static final DateTime _startDate = DateTime(2025, 12, 1);
   static final DateTime _endDate = DateTime(2030, 12, 31);
 
-  final FirebaseAuthService _authService = FirebaseAuthService();
-  late final Stream<Map<String, dynamic>?> _profileStream =
-      _authService.watchCurrentUserProfile();
+  final EventService _eventService = EventService();
+  late final Stream<List<CalendarEvent>> _eventsStream =
+      _eventService.watchEvents(_startDate, _endDate);
 
   late final int _monthCount = (_endDate.year - _startDate.year) * 12 +
       (_endDate.month - _startDate.month) +
@@ -32,6 +34,12 @@ class _CalendarPageState extends State<CalendarPage> {
     super.initState();
     _currentPage = _initialPageFor(DateTime.now());
     _pageController = PageController(initialPage: _currentPage);
+    final today = DateTime.now();
+    _selectedDate = today.isBefore(_startDate)
+        ? _startDate
+        : today.isAfter(_endDate)
+            ? _endDate
+            : today;
   }
 
   @override
@@ -64,6 +72,12 @@ class _CalendarPageState extends State<CalendarPage> {
     );
   }
 
+  void _openCreateEvent() {
+    Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => const CreateEventPage()),
+    );
+  }
+
   Widget _buildHeader(BuildContext context, DateTime currentMonth) {
     final theme = Theme.of(context);
     const textColor = Colors.black87;
@@ -71,16 +85,26 @@ class _CalendarPageState extends State<CalendarPage> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        StreamBuilder<Map<String, dynamic>?>(
-          stream: _profileStream,
-          builder: (context, snapshot) {
-            final name = (snapshot.data?['name'] as String?) ?? 'お客さま';
-            return Text(
-              '$name さんのカレンダー',
-              style:
-                  theme.textTheme.titleMedium?.copyWith(color: subTextColor),
-            );
-          },
+        Row(
+          children: [
+            Expanded(
+              child: Center(
+                child: Text(
+                  'イベントスケジュール',
+                  style: theme.textTheme.titleLarge?.copyWith(
+                    fontWeight: FontWeight.bold,
+                    color: textColor,
+                  ),
+                ),
+              ),
+            ),
+            IconButton(
+              onPressed: _openCreateEvent,
+              icon: const Icon(Icons.add_circle_outline),
+              color: theme.colorScheme.primary,
+              tooltip: 'イベント作成',
+            ),
+          ],
         ),
         const SizedBox(height: 12),
         Row(
@@ -126,59 +150,109 @@ class _CalendarPageState extends State<CalendarPage> {
   @override
   Widget build(BuildContext context) {
     final currentMonth = _monthForIndex(_currentPage);
-    final theme = Theme.of(context);
     final background = Colors.white;
     final screenHeight = MediaQuery.of(context).size.height;
-    final calendarHeight = math.max(screenHeight * 0.95, 720.0);
+    final calendarHeight = math.max(screenHeight * 0.5, 450.0);
 
-    return SafeArea(
-      child: Container(
-        color: background,
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.only(bottom: 32),
-          child: Column(
-            children: [
-              Padding(
-                padding: const EdgeInsets.fromLTRB(24, 24, 24, 8),
-                child: _buildHeader(context, currentMonth),
-              ),
-              SizedBox(
-                height: calendarHeight,
-                child: PageView.builder(
-                  controller: _pageController,
-                  itemCount: _monthCount,
-                  onPageChanged: (index) {
-                    setState(() => _currentPage = index);
-                  },
-                  itemBuilder: (context, index) {
-                    final month = _monthForIndex(index);
-                    return Padding(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 16, vertical: 8),
-                      child: Column(
-                        children: [
-                          const _WeekdayHeader(),
-                          const SizedBox(height: 16),
-                          Expanded(
-                            child: _MonthGrid(
-                              month: month,
-                              selectedDate: _selectedDate,
-                              onSelectDate: (date) {
-                                setState(() => _selectedDate = date);
-                              },
-                            ),
+    return StreamBuilder<List<CalendarEvent>>(
+      stream: _eventsStream,
+      builder: (context, snapshot) {
+        final eventsByDate = _groupEvents(snapshot.data ?? const <CalendarEvent>[]);
+        final selectedEvents = _eventsForDate(eventsByDate, _selectedDate);
+
+        return SafeArea(
+          child: Container(
+            color: background,
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.only(bottom: 32),
+              child: Column(
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(24, 24, 24, 8),
+                    child: _buildHeader(context, currentMonth),
+                  ),
+                  SizedBox(
+                    height: calendarHeight,
+                    child: PageView.builder(
+                      controller: _pageController,
+                      itemCount: _monthCount,
+                      onPageChanged: (index) {
+                        setState(() => _currentPage = index);
+                      },
+                      itemBuilder: (context, index) {
+                        final month = _monthForIndex(index);
+                        return Padding(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 16,
+                            vertical: 8,
                           ),
-                        ],
-                      ),
-                    );
-                  },
-                ),
+                          child: Column(
+                            children: [
+                              const _WeekdayHeader(),
+                              const SizedBox(height: 16),
+                              Expanded(
+                                child: _MonthGrid(
+                                  month: month,
+                                  selectedDate: _selectedDate,
+                                  onSelectDate: (date) {
+                                    setState(() => _selectedDate = date);
+                                  },
+                                ),
+                              ),
+                            ],
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 24,
+                      vertical: 16,
+                    ),
+                    child: _EventList(
+                      selectedDate: _selectedDate,
+                      events: selectedEvents,
+                      weekdayLabel: _weekdayLabel,
+                      isLoading:
+                          snapshot.connectionState == ConnectionState.waiting,
+                    ),
+                  ),
+                ],
               ),
-            ],
+            ),
           ),
-        ),
-      ),
+        );
+      },
     );
+  }
+
+  Map<String, List<CalendarEvent>> _groupEvents(
+    List<CalendarEvent> events,
+  ) {
+    final Map<String, List<CalendarEvent>> result = {};
+    for (final event in events) {
+      final key = _dateKey(event.startDateTime);
+      result.putIfAbsent(key, () => []).add(event);
+    }
+    return result;
+  }
+
+  List<CalendarEvent> _eventsForDate(
+    Map<String, List<CalendarEvent>> grouped,
+    DateTime? date,
+  ) {
+    if (date == null) return const [];
+    return grouped[_dateKey(date)] ?? const [];
+  }
+
+  String _dateKey(DateTime date) {
+    return '${date.year.toString().padLeft(4, '0')}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
+  }
+
+  String _weekdayLabel(int weekday) {
+    const labels = ['月', '火', '水', '木', '金', '土', '日'];
+    return labels[(weekday + 6) % 7];
   }
 }
 
@@ -309,6 +383,158 @@ class _MonthGrid extends StatelessWidget {
           child: cellContent,
         );
       },
+    );
+  }
+}
+
+class _EventList extends StatelessWidget {
+  const _EventList({
+    required this.selectedDate,
+    required this.events,
+    required this.weekdayLabel,
+    required this.isLoading,
+  });
+
+  final DateTime? selectedDate;
+  final List<CalendarEvent> events;
+  final String Function(int weekday) weekdayLabel;
+  final bool isLoading;
+
+  @override
+  Widget build(BuildContext context) {
+    if (selectedDate == null) {
+      return const SizedBox.shrink();
+    }
+    final label =
+        '${selectedDate!.year}年${selectedDate!.month}月${selectedDate!.day}日（${weekdayLabel(selectedDate!.weekday)}）';
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          label,
+          style: Theme.of(context)
+              .textTheme
+              .titleMedium
+              ?.copyWith(fontWeight: FontWeight.bold),
+        ),
+        const SizedBox(height: 12),
+        if (isLoading && events.isEmpty)
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(24),
+            alignment: Alignment.center,
+            child: const CircularProgressIndicator(),
+          )
+        else if (events.isEmpty)
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 20),
+            decoration: BoxDecoration(
+              color: Colors.grey.shade100,
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: const Text('この日の予定はありません'),
+          )
+        else
+          Column(
+            children: events
+                .map(
+                  (event) => Container(
+                    width: double.infinity,
+                    margin: const EdgeInsets.only(bottom: 8),
+                    padding:
+                        const EdgeInsets.symmetric(vertical: 14, horizontal: 18),
+                    decoration: BoxDecoration(
+                      color: Colors.blue.shade50,
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: _EventTile(event: event),
+                  ),
+                )
+                .toList(),
+          ),
+      ],
+    );
+  }
+}
+
+class _EventTile extends StatelessWidget {
+  const _EventTile({required this.event});
+
+  final CalendarEvent event;
+
+  String get _timeLabel {
+    String format(DateTime dt) =>
+        '${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}';
+    return '${format(event.startDateTime)}〜${format(event.endDateTime)}';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Icon(Icons.event, color: Colors.blue),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    event.name,
+                    style: Theme.of(context)
+                        .textTheme
+                        .titleSmall
+                        ?.copyWith(fontWeight: FontWeight.bold),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    '主催: ${event.organizer.isNotEmpty ? event.organizer : '未設定'} / 時間: $_timeLabel',
+                    style: Theme.of(context).textTheme.bodySmall,
+                  ),
+                  if (event.content.isNotEmpty) ...[
+                    const SizedBox(height: 6),
+                    Text(
+                      event.content,
+                      style: Theme.of(context).textTheme.bodyMedium,
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          ],
+        ),
+        if (event.imageUrls.isNotEmpty) ...[
+          const SizedBox(height: 12),
+          Wrap(
+            spacing: 12,
+            runSpacing: 12,
+            children: event.imageUrls
+                .map(
+                  (url) => ClipRRect(
+                    borderRadius: BorderRadius.circular(12),
+                    child: SizedBox(
+                      width: 88,
+                      height: 88,
+                      child: Image.network(
+                        url,
+                        fit: BoxFit.cover,
+                        errorBuilder: (context, error, stackTrace) => Container(
+                          color: Colors.grey.shade200,
+                          child: const Icon(Icons.broken_image),
+                        ),
+                      ),
+                    ),
+                  ),
+                )
+                .toList(),
+          ),
+        ],
+      ],
     );
   }
 }
