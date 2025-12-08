@@ -18,6 +18,7 @@ class _LoginPageState extends State<LoginPage> {
   final _authService = FirebaseAuthService();
 
   bool _isLoading = false;
+  bool _passwordVisible = false;
 
   @override
   void dispose() {
@@ -87,8 +88,17 @@ class _LoginPageState extends State<LoginPage> {
               const SizedBox(height: 16),
               TextFormField(
                 controller: _passwordController,
-                decoration: const InputDecoration(labelText: 'パスワード'),
-                obscureText: true,
+                decoration: InputDecoration(
+                  labelText: 'パスワード',
+                  suffixIcon: IconButton(
+                    onPressed: () =>
+                        setState(() => _passwordVisible = !_passwordVisible),
+                    icon: Icon(
+                      _passwordVisible ? Icons.visibility_off : Icons.visibility,
+                    ),
+                  ),
+                ),
+                obscureText: !_passwordVisible,
                 validator: (value) {
                   if (value == null || value.length < 6) {
                     return '6文字以上のパスワードを入力してください';

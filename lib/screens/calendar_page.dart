@@ -1,34 +1,325 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 
 import '../services/firebase_auth_service.dart';
 
-class CalendarPage extends StatelessWidget {
+class CalendarPage extends StatefulWidget {
   const CalendarPage({super.key});
 
   @override
+  State<CalendarPage> createState() => _CalendarPageState();
+}
+
+class _CalendarPageState extends State<CalendarPage> {
+  static final DateTime _startDate = DateTime(2025, 12, 1);
+  static final DateTime _endDate = DateTime(2030, 12, 31);
+
+  final FirebaseAuthService _authService = FirebaseAuthService();
+  late final Stream<Map<String, dynamic>?> _profileStream =
+      _authService.watchCurrentUserProfile();
+
+  late final int _monthCount = (_endDate.year - _startDate.year) * 12 +
+      (_endDate.month - _startDate.month) +
+      1;
+
+  late final PageController _pageController;
+  late int _currentPage;
+  DateTime? _selectedDate;
+
+  @override
+  void initState() {
+    super.initState();
+    _currentPage = _initialPageFor(DateTime.now());
+    _pageController = PageController(initialPage: _currentPage);
+  }
+
+  @override
+  void dispose() {
+    _pageController.dispose();
+    super.dispose();
+  }
+
+  int _initialPageFor(DateTime target) {
+    if (target.isBefore(_startDate)) {
+      return 0;
+    }
+    if (target.isAfter(_endDate)) {
+      return _monthCount - 1;
+    }
+    return (target.year - _startDate.year) * 12 +
+        (target.month - _startDate.month);
+  }
+
+  DateTime _monthForIndex(int index) {
+    return DateTime(_startDate.year, _startDate.month + index, 1);
+  }
+
+  void _goToPage(int index) {
+    if (index < 0 || index >= _monthCount) return;
+    _pageController.animateToPage(
+      index,
+      duration: const Duration(milliseconds: 250),
+      curve: Curves.easeInOut,
+    );
+  }
+
+  Widget _buildHeader(BuildContext context, DateTime currentMonth) {
+    final theme = Theme.of(context);
+    const textColor = Colors.black87;
+    const subTextColor = Colors.black54;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        StreamBuilder<Map<String, dynamic>?>(
+          stream: _profileStream,
+          builder: (context, snapshot) {
+            final name = (snapshot.data?['name'] as String?) ?? 'お客さま';
+            return Text(
+              '$name さんのカレンダー',
+              style:
+                  theme.textTheme.titleMedium?.copyWith(color: subTextColor),
+            );
+          },
+        ),
+        const SizedBox(height: 12),
+        Row(
+          children: [
+            IconButton(
+              onPressed:
+                  _currentPage > 0 ? () => _goToPage(_currentPage - 1) : null,
+              icon: const Icon(Icons.chevron_left, color: Colors.black45),
+            ),
+            Expanded(
+              child: Column(
+                children: [
+                  Text(
+                    '${currentMonth.year}年${currentMonth.month}月',
+                    style: theme.textTheme.headlineSmall?.copyWith(
+                      fontWeight: FontWeight.bold,
+                      color: textColor,
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    '対象期間：2025年12月1日〜2030年12月31日',
+                    style:
+                        theme.textTheme.bodySmall?.copyWith(color: subTextColor),
+                    textAlign: TextAlign.center,
+                  ),
+                ],
+              ),
+            ),
+            IconButton(
+              onPressed: _currentPage < _monthCount - 1
+                  ? () => _goToPage(_currentPage + 1)
+                  : null,
+              icon: const Icon(Icons.chevron_right, color: Colors.black45),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  @override
   Widget build(BuildContext context) {
-    return StreamBuilder<Map<String, dynamic>?>(
-      stream: FirebaseAuthService().watchCurrentUserProfile(),
-      builder: (context, snapshot) {
-        final name = (snapshot.data?['name'] as String?) ?? 'お客さま';
-        return _CenteredPlaceholder(text: '$name さんのカレンダー（準備中）');
+    final currentMonth = _monthForIndex(_currentPage);
+    final theme = Theme.of(context);
+    final background = Colors.white;
+    final screenHeight = MediaQuery.of(context).size.height;
+    final calendarHeight = math.max(screenHeight * 0.95, 720.0);
+
+    return SafeArea(
+      child: Container(
+        color: background,
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.only(bottom: 32),
+          child: Column(
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(24, 24, 24, 8),
+                child: _buildHeader(context, currentMonth),
+              ),
+              SizedBox(
+                height: calendarHeight,
+                child: PageView.builder(
+                  controller: _pageController,
+                  itemCount: _monthCount,
+                  onPageChanged: (index) {
+                    setState(() => _currentPage = index);
+                  },
+                  itemBuilder: (context, index) {
+                    final month = _monthForIndex(index);
+                    return Padding(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 16, vertical: 8),
+                      child: Column(
+                        children: [
+                          const _WeekdayHeader(),
+                          const SizedBox(height: 16),
+                          Expanded(
+                            child: _MonthGrid(
+                              month: month,
+                              selectedDate: _selectedDate,
+                              onSelectDate: (date) {
+                                setState(() => _selectedDate = date);
+                              },
+                            ),
+                          ),
+                        ],
+                      ),
+                    );
+                  },
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _WeekdayHeader extends StatelessWidget {
+  const _WeekdayHeader();
+
+  static const List<String> _labels = ['日', '月', '火', '水', '木', '金', '土'];
+
+  @override
+  Widget build(BuildContext context) {
+    final color = Colors.black87;
+    return Row(
+      children: List.generate(_labels.length, (index) {
+        final labelColor = index == 0
+            ? Colors.red
+            : index == 6
+                ? Colors.blue
+                : color;
+        return Expanded(
+          child: Text(
+            _labels[index],
+            textAlign: TextAlign.center,
+            style: Theme.of(context)
+                .textTheme
+                .labelLarge
+                ?.copyWith(color: labelColor),
+          ),
+        );
+      }),
+    );
+  }
+}
+
+class _MonthGrid extends StatelessWidget {
+  const _MonthGrid({
+    required this.month,
+    required this.selectedDate,
+    required this.onSelectDate,
+  });
+
+  final DateTime month;
+  final DateTime? selectedDate;
+  final ValueChanged<DateTime> onSelectDate;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final daysInMonth = DateUtils.getDaysInMonth(month.year, month.month);
+    final firstDayOfMonth = DateTime(month.year, month.month, 1);
+    final leadingEmpty = firstDayOfMonth.weekday % 7;
+    final totalCells = ((leadingEmpty + daysInMonth + 6) ~/ 7) * 7;
+    final Color weekdayColor = Colors.black87;
+    final TextStyle baseStyle =
+        theme.textTheme.bodySmall?.copyWith(fontSize: 11) ??
+            const TextStyle(fontSize: 11);
+    final today = DateTime.now();
+    final todayDate = DateTime(today.year, today.month, today.day);
+
+    return GridView.builder(
+      physics: const NeverScrollableScrollPhysics(),
+      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+        crossAxisCount: 7,
+        crossAxisSpacing: 8,
+        mainAxisSpacing: 8,
+        childAspectRatio: 0.65,
+      ),
+      itemCount: totalCells,
+      itemBuilder: (context, index) {
+        final dayNumber = index - leadingEmpty + 1;
+        final isInMonth = dayNumber > 0 && dayNumber <= daysInMonth;
+        final weekdayIndex = index % 7;
+        final cellDate =
+            isInMonth ? DateTime(month.year, month.month, dayNumber) : null;
+        final isToday = cellDate == todayDate;
+        final textColor = weekdayIndex == 0
+            ? Colors.red
+            : weekdayIndex == 6
+                ? Colors.blue
+                : weekdayColor;
+        final isSelected =
+            isInMonth && selectedDate != null && cellDate == selectedDate;
+        final Color backgroundColor = !isInMonth
+            ? Colors.transparent
+            : isToday
+                ? Colors.lightBlue.shade50
+                : Colors.grey.shade100;
+
+        Widget cellContent = DecoratedBox(
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(
+              color: isSelected ? Colors.blue : Colors.transparent,
+              width: isSelected ? 2 : 0,
+            ),
+            color: backgroundColor,
+          ),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 8),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                Text(
+                  isInMonth ? '$dayNumber' : '',
+                  style: baseStyle.copyWith(
+                    color: isInMonth ? textColor : Colors.grey.shade300,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const SizedBox(height: 10),
+                Column(
+                  children: [
+                    _schedulePlaceholder(isInMonth, theme, height: 10),
+                    const SizedBox(height: 6),
+                    _schedulePlaceholder(isInMonth, theme, height: 10),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        );
+
+        if (!isInMonth || cellDate == null) {
+          return cellContent;
+        }
+
+        return GestureDetector(
+          onTap: () => onSelectDate(cellDate),
+          child: cellContent,
+        );
       },
     );
   }
 }
 
-class _CenteredPlaceholder extends StatelessWidget {
-  const _CenteredPlaceholder({required this.text});
-
-  final String text;
-
-  @override
-  Widget build(BuildContext context) {
-    return Center(
-      child: Text(
-        text,
-        style: Theme.of(context).textTheme.titleMedium,
-      ),
-    );
-  }
+Widget _schedulePlaceholder(bool isActive, ThemeData theme, {double height = 6}) {
+  return Container(
+    height: height,
+    width: double.infinity,
+    decoration: BoxDecoration(
+      color: isActive ? Colors.black12 : Colors.transparent,
+      borderRadius: BorderRadius.circular(3),
+    ),
+  );
 }
