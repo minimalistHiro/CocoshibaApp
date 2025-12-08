@@ -2,6 +2,7 @@ import 'dart:typed_data';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 
 class FirebaseAuthService {
@@ -18,6 +19,47 @@ class FirebaseAuthService {
   final FirebaseStorage _storage;
 
   User? get currentUser => _auth.currentUser;
+
+  Future<String?> fetchProfileImageUrl() async {
+    final user = currentUser;
+    if (user == null) return null;
+
+    final authPhotoUrl = user.photoURL;
+    if (authPhotoUrl != null && authPhotoUrl.isNotEmpty) {
+      return authPhotoUrl;
+    }
+
+    try {
+      final doc = await _firestore.collection('users').doc(user.uid).get();
+      final data = doc.data();
+      final firestorePhotoUrl = data?['photoUrl'] as String?;
+      if (firestorePhotoUrl != null && firestorePhotoUrl.isNotEmpty) {
+        return firestorePhotoUrl;
+      }
+    } catch (e) {
+      // Ignore and fallback to null so the UI can handle missing images gracefully.
+    }
+    return null;
+  }
+
+  Future<Map<String, dynamic>?> fetchCurrentUserProfile() async {
+    final user = currentUser;
+    if (user == null) return null;
+    final doc = await _firestore.collection('users').doc(user.uid).get();
+    return doc.data();
+  }
+
+  Stream<Map<String, dynamic>?> watchCurrentUserProfile() {
+    final user = currentUser;
+    if (user == null) {
+      return const Stream.empty();
+    }
+    return _firestore
+        .collection('users')
+        .doc(user.uid)
+        .snapshots()
+        .map((snapshot) => snapshot.data());
+  }
 
   Future<UserCredential> signUp({
     required String name,
@@ -65,6 +107,27 @@ class FirebaseAuthService {
   }
 
   Future<void> signOut() => _auth.signOut();
+
+  Future<void> deleteAccount() async {
+    final user = _auth.currentUser;
+    if (user == null) {
+      return;
+    }
+
+    final uid = user.uid;
+    final imageRef = _storage.ref().child('profile_images').child('$uid.jpg');
+    try {
+      await imageRef.delete();
+    } on FirebaseException catch (e) {
+      if (e.code != 'object-not-found') {
+        rethrow;
+      }
+    }
+
+    await _firestore.collection('users').doc(uid).delete();
+    await user.delete();
+    await _auth.signOut();
+  }
 
   Future<String> _uploadProfileImage(String uid, Uint8List data) async {
     final ref = _storage.ref().child('profile_images').child('$uid.jpg');

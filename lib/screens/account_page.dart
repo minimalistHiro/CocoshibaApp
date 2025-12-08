@@ -1,19 +1,63 @@
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
 import '../services/firebase_auth_service.dart';
 
-class AccountPage extends StatelessWidget {
+class AccountPage extends StatefulWidget {
   const AccountPage({super.key});
+
+  @override
+  State<AccountPage> createState() => _AccountPageState();
+}
+
+class _AccountPageState extends State<AccountPage> {
+  final FirebaseAuthService _authService = FirebaseAuthService();
+  late final Stream<Map<String, dynamic>?> _profileStream;
+  bool _isDeleting = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _profileStream = _authService.watchCurrentUserProfile();
+  }
 
   Future<void> _logout(BuildContext context) async {
     final messenger = ScaffoldMessenger.of(context);
     final navigator = Navigator.of(context);
     try {
-      await FirebaseAuthService().signOut();
+      await _authService.signOut();
       messenger.showSnackBar(const SnackBar(content: Text('ログアウトしました')));
       navigator.popUntil((route) => route.isFirst);
     } catch (_) {
       messenger.showSnackBar(const SnackBar(content: Text('ログアウトに失敗しました')));
+    }
+  }
+
+  Future<void> _deleteAccount(BuildContext context) async {
+    final messenger = ScaffoldMessenger.of(context);
+    final navigator = Navigator.of(context);
+
+    setState(() => _isDeleting = true);
+    try {
+      await _authService.deleteAccount();
+      if (!context.mounted) return;
+      messenger.showSnackBar(
+        const SnackBar(content: Text('アカウントを削除しました')),
+      );
+      navigator.popUntil((route) => route.isFirst);
+    } on FirebaseAuthException catch (e) {
+      final code = e.code;
+      final message =
+          e.message ?? 'アカウント削除に失敗しました（再度ログインが必要な場合があります）';
+      messenger.showSnackBar(
+        SnackBar(content: Text('[$code] $message')),
+      );
+    } catch (_) {
+      messenger.showSnackBar(
+        const SnackBar(content: Text('アカウント削除に失敗しました')),
+      );
+    } finally {
+      if (mounted) setState(() => _isDeleting = false);
     }
   }
 
@@ -44,13 +88,59 @@ class AccountPage extends StatelessWidget {
     }
   }
 
+  Future<void> _confirmAndDelete(BuildContext context) async {
+    final shouldDelete = await showDialog<bool>(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: const Text('確認'),
+            content: const Text('アカウントを削除しますか？この操作は元に戻せません。'),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(false),
+                child: const Text('キャンセル'),
+              ),
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(true),
+                child: const Text(
+                  '削除する',
+                  style: TextStyle(color: Colors.red),
+                ),
+              ),
+            ],
+          ),
+        ) ??
+        false;
+
+    if (!context.mounted || !shouldDelete) return;
+
+    await _deleteAccount(context);
+  }
+
+  Widget _buildProfileAvatar(String? photoUrl, String fallbackInitial) {
+    final hasPhoto = photoUrl != null && photoUrl.isNotEmpty;
+    return CircleAvatar(
+      radius: 32,
+      backgroundColor: Theme.of(context).colorScheme.primary,
+      backgroundImage: hasPhoto ? NetworkImage(photoUrl!) : null,
+      child: hasPhoto
+          ? null
+          : Text(
+              fallbackInitial,
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 24,
+              ),
+            ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
-    final user = FirebaseAuthService().currentUser;
-    final name = user?.displayName ?? 'お客さま';
-    final email = user?.email ?? '未ログイン';
-    final photoUrl = user?.photoURL;
-    final String initial = name.isNotEmpty ? name.substring(0, 1) : '?';
+    final user = _authService.currentUser;
+    final fallbackName = user?.displayName ?? 'お客さま';
+    final fallbackEmail = user?.email ?? '未ログイン';
+    final String initial =
+        fallbackName.isNotEmpty ? fallbackName.substring(0, 1) : '?';
 
     return SafeArea(
       child: SingleChildScrollView(
@@ -58,40 +148,34 @@ class AccountPage extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Row(
-              children: [
-                CircleAvatar(
-                  radius: 32,
-                  backgroundColor: Theme.of(context).colorScheme.primary,
-                  backgroundImage:
-                      (photoUrl != null && photoUrl.isNotEmpty)
-                          ? NetworkImage(photoUrl)
-                          : null,
-                  child: (photoUrl == null || photoUrl.isEmpty)
-                      ? Text(
-                          initial,
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 24,
-                          ),
-                        )
-                      : null,
-                ),
-                const SizedBox(width: 16),
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+            StreamBuilder<Map<String, dynamic>?>(
+              stream: _profileStream,
+              builder: (context, snapshot) {
+                final data = snapshot.data;
+                final name = (data?['name'] as String?) ?? fallbackName;
+                final email = (data?['email'] as String?) ?? fallbackEmail;
+                final photoUrl =
+                    (data?['photoUrl'] as String?) ?? user?.photoURL;
+                return Row(
                   children: [
-                    Text(
-                      name,
-                      style: Theme.of(context)
-                          .textTheme
-                          .titleLarge
-                          ?.copyWith(fontWeight: FontWeight.bold),
+                    _buildProfileAvatar(photoUrl, initial),
+                    const SizedBox(width: 16),
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          name,
+                          style: Theme.of(context)
+                              .textTheme
+                              .titleLarge
+                              ?.copyWith(fontWeight: FontWeight.bold),
+                        ),
+                        Text(email),
+                      ],
                     ),
-                    Text(email),
                   ],
-                ),
-              ],
+                );
+              },
             ),
             const SizedBox(height: 32),
             Card(
@@ -110,6 +194,15 @@ class AccountPage extends StatelessWidget {
               label: const Text('ログアウト'),
               style: FilledButton.styleFrom(
                 minimumSize: const Size.fromHeight(48),
+              ),
+            ),
+            const SizedBox(height: 16),
+            TextButton.icon(
+              onPressed: _isDeleting ? null : () => _confirmAndDelete(context),
+              icon: const Icon(Icons.delete_forever),
+              label: const Text('アカウント削除'),
+              style: TextButton.styleFrom(
+                foregroundColor: Theme.of(context).colorScheme.error,
               ),
             ),
           ],
