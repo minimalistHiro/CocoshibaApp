@@ -67,9 +67,27 @@ class _MainTabScaffoldState extends State<MainTabScaffold> {
         index: _selectedIndex,
         children: _pages,
       ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: _openQr,
-        child: const Icon(Icons.qr_code),
+      floatingActionButton: Transform.translate(
+        offset: const Offset(0, 24),
+        child: FloatingActionButton(
+          shape: const CircleBorder(),
+          onPressed: _openQr,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: const [
+              Icon(Icons.qr_code, size: 24),
+              SizedBox(height: 2),
+              Text(
+                'QRコード',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 10,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
       floatingActionButtonLocation: FloatingActionButtonLocation.centerDocked,
       bottomNavigationBar: BottomAppBar(
@@ -80,7 +98,7 @@ class _MainTabScaffoldState extends State<MainTabScaffold> {
           child: SizedBox(
             height: 68,
             child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 0),
               child: Row(
                 children: [
                   Expanded(
@@ -89,7 +107,7 @@ class _MainTabScaffoldState extends State<MainTabScaffold> {
                       children: tabs.take(2).toList(),
                     ),
                   ),
-                  const SizedBox(width: 64),
+                  const SizedBox(width: 68),
                   Expanded(
                     child: Row(
                       mainAxisAlignment: MainAxisAlignment.spaceEvenly,
@@ -128,7 +146,7 @@ class _TabItem extends StatelessWidget {
       onTap: onTap,
       behavior: HitTestBehavior.translucent,
       child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 8),
+        padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 12),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -136,7 +154,7 @@ class _TabItem extends StatelessWidget {
             const SizedBox(height: 4),
             Text(
               label,
-              style: TextStyle(color: color, fontSize: 12),
+              style: TextStyle(color: color, fontSize: 10),
             ),
           ],
         ),
