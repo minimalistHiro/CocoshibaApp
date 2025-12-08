@@ -7,10 +7,11 @@ class AccountPage extends StatelessWidget {
 
   Future<void> _logout(BuildContext context) async {
     final messenger = ScaffoldMessenger.of(context);
+    final navigator = Navigator.of(context);
     try {
       await FirebaseAuthService().signOut();
       messenger.showSnackBar(const SnackBar(content: Text('ログアウトしました')));
-      Navigator.of(context).popUntil((route) => route.isFirst);
+      navigator.popUntil((route) => route.isFirst);
     } catch (_) {
       messenger.showSnackBar(const SnackBar(content: Text('ログアウトに失敗しました')));
     }
@@ -36,6 +37,8 @@ class AccountPage extends StatelessWidget {
         ) ??
         false;
 
+    if (!context.mounted) return;
+
     if (shouldLogout) {
       await _logout(context);
     }
@@ -46,6 +49,8 @@ class AccountPage extends StatelessWidget {
     final user = FirebaseAuthService().currentUser;
     final name = user?.displayName ?? 'お客さま';
     final email = user?.email ?? '未ログイン';
+    final photoUrl = user?.photoURL;
+    final String initial = name.isNotEmpty ? name.substring(0, 1) : '?';
 
     return SafeArea(
       child: SingleChildScrollView(
@@ -58,10 +63,19 @@ class AccountPage extends StatelessWidget {
                 CircleAvatar(
                   radius: 32,
                   backgroundColor: Theme.of(context).colorScheme.primary,
-                  child: Text(
-                    name.isNotEmpty ? name.substring(0, 1) : '?',
-                    style: const TextStyle(color: Colors.white, fontSize: 24),
-                  ),
+                  backgroundImage:
+                      (photoUrl != null && photoUrl.isNotEmpty)
+                          ? NetworkImage(photoUrl)
+                          : null,
+                  child: (photoUrl == null || photoUrl.isEmpty)
+                      ? Text(
+                          initial,
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 24,
+                          ),
+                        )
+                      : null,
                 ),
                 const SizedBox(width: 16),
                 Column(
