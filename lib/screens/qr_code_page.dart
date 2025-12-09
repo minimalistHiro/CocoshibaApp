@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 
 import '../services/firebase_auth_service.dart';
-
 class QrCodePage extends StatelessWidget {
   const QrCodePage({super.key});
 
