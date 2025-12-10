@@ -5,6 +5,7 @@ import 'books_page.dart';
 import 'calendar_page.dart';
 import 'home_page.dart';
 import 'qr_code_page.dart';
+import '../services/push_notification_service.dart';
 
 class MainTabScaffold extends StatefulWidget {
   const MainTabScaffold({super.key});
@@ -15,6 +16,8 @@ class MainTabScaffold extends StatefulWidget {
 
 class _MainTabScaffoldState extends State<MainTabScaffold> {
   int _selectedIndex = 0;
+  final PushNotificationService _pushNotificationService =
+      PushNotificationService();
 
   final List<Widget> _pages = const [
     HomePage(),
@@ -31,6 +34,18 @@ class _MainTabScaffoldState extends State<MainTabScaffold> {
     Navigator.of(context).push(
       MaterialPageRoute(builder: (_) => const QrCodePage()),
     );
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _pushNotificationService.initializeAndSyncToken();
+  }
+
+  @override
+  void dispose() {
+    _pushNotificationService.dispose();
+    super.dispose();
   }
 
   @override
