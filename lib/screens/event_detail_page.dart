@@ -50,213 +50,238 @@ class _EventDetailPageState extends State<EventDetailPage> {
     return '${format(start)}〜${format(end)}';
   }
 
+  bool _isEventFull(int reservationCount) {
+    final capacity = _event.capacity;
+    if (capacity <= 0) return false;
+    return reservationCount >= capacity;
+  }
+
   @override
   Widget build(BuildContext context) {
-    final event = _event;
-    final theme = Theme.of(context);
-    final hasImages = event.imageUrls.isNotEmpty;
-    final imageHeight = MediaQuery.of(context).size.width;
+    return StreamBuilder<int>(
+      stream: _reservationCountStream,
+      builder: (context, snapshot) {
+        final event = _event;
+        final theme = Theme.of(context);
+        final hasImages = event.imageUrls.isNotEmpty;
+        final imageHeight = MediaQuery.of(context).size.width;
+        final reservationCount = snapshot.data ?? 0;
+        final isEventFull = _isEventFull(reservationCount);
+        final reservationCountLabel =
+            snapshot.hasData ? '$reservationCount人' : '取得中...';
+        final isReservationBusy =
+            _isReservationLoading || _isReservationProcessing;
+        final bool isReservationButtonDisabled =
+            !_hasReservation && isEventFull;
 
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('イベント詳細'),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.edit),
-            tooltip: 'イベントを編集',
-            onPressed: _openEditEvent,
+        return Scaffold(
+          appBar: AppBar(
+            title: const Text('イベント詳細'),
+            actions: [
+              IconButton(
+                icon: const Icon(Icons.edit),
+                tooltip: 'イベントを編集',
+                onPressed: _openEditEvent,
+              ),
+            ],
           ),
-        ],
-      ),
-      body: Column(
-        children: [
-          Expanded(
-            child: SingleChildScrollView(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  SizedBox(
-                    height: imageHeight,
-                    width: double.infinity,
-                    child: hasImages
-                        ? Stack(
-                            children: [
-                              PageView.builder(
-                                controller: _pageController,
-                                onPageChanged: (index) =>
-                                    setState(() => _currentIndex = index),
-                                itemCount: event.imageUrls.length,
-                                itemBuilder: (context, index) => Image.network(
-                                  event.imageUrls[index],
-                                  fit: BoxFit.cover,
-                                  errorBuilder: (context, error, stackTrace) =>
-                                      Container(
-                                    color: Colors.grey.shade200,
-                                    alignment: Alignment.center,
-                                    child: const Icon(Icons.broken_image,
-                                        size: 48),
-                                  ),
-                                ),
-                              ),
-                              if (event.imageUrls.length > 1)
-                                Positioned(
-                                  bottom: 16,
-                                  left: 0,
-                                  right: 0,
-                                  child: Row(
-                                    mainAxisAlignment: MainAxisAlignment.center,
-                                    children: List.generate(
-                                      event.imageUrls.length,
-                                      (index) => Container(
-                                        width: 8,
-                                        height: 8,
-                                        margin: const EdgeInsets.symmetric(
-                                            horizontal: 4),
-                                        decoration: BoxDecoration(
-                                          shape: BoxShape.circle,
-                                          color: _currentIndex == index
-                                              ? Colors.white
-                                              : Colors.white54,
-                                        ),
+          body: Column(
+            children: [
+              Expanded(
+                child: SingleChildScrollView(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      SizedBox(
+                        height: imageHeight,
+                        width: double.infinity,
+                        child: hasImages
+                            ? Stack(
+                                children: [
+                                  PageView.builder(
+                                    controller: _pageController,
+                                    onPageChanged: (index) =>
+                                        setState(() => _currentIndex = index),
+                                    itemCount: event.imageUrls.length,
+                                    itemBuilder: (context, index) =>
+                                        Image.network(
+                                      event.imageUrls[index],
+                                      fit: BoxFit.cover,
+                                      errorBuilder:
+                                          (context, error, stackTrace) =>
+                                              Container(
+                                        color: Colors.grey.shade200,
+                                        alignment: Alignment.center,
+                                        child: const Icon(Icons.broken_image,
+                                            size: 48),
                                       ),
                                     ),
                                   ),
-                                ),
-                            ],
-                          )
-                        : Container(
-                            color: Colors.grey.shade200,
-                            alignment: Alignment.center,
-                            child: const Icon(Icons.event, size: 48),
-                          ),
-                  ),
-                  Padding(
-                    padding: const EdgeInsets.all(24),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          event.name,
-                          style: theme.textTheme.headlineSmall
-                              ?.copyWith(fontWeight: FontWeight.bold),
-                        ),
-                        const SizedBox(height: 8),
-                        _InfoRow(
-                          label: '主催',
-                          value: event.organizer.isNotEmpty
-                              ? event.organizer
-                              : '未設定',
-                        ),
-                        const SizedBox(height: 8),
-                        _InfoRow(
-                          label: '定員',
-                          value: event.capacity > 0
-                              ? '${event.capacity}人'
-                              : '設定なし',
-                        ),
-                        const SizedBox(height: 8),
-                        _InfoRow(
-                          label: '日付',
-                          value: _formatDate(event.startDateTime),
-                        ),
-                        const SizedBox(height: 8),
-                        StreamBuilder<int>(
-                          stream: _reservationCountStream,
-                          builder: (context, snapshot) {
-                            final count = snapshot.data ?? 0;
-                            return _InfoRow(
+                                  if (event.imageUrls.length > 1)
+                                    Positioned(
+                                      bottom: 16,
+                                      left: 0,
+                                      right: 0,
+                                      child: Row(
+                                        mainAxisAlignment:
+                                            MainAxisAlignment.center,
+                                        children: List.generate(
+                                          event.imageUrls.length,
+                                          (index) => Container(
+                                            width: 8,
+                                            height: 8,
+                                            margin: const EdgeInsets.symmetric(
+                                                horizontal: 4),
+                                            decoration: BoxDecoration(
+                                              shape: BoxShape.circle,
+                                              color: _currentIndex == index
+                                                  ? Colors.white
+                                                  : Colors.white54,
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                ],
+                              )
+                            : Container(
+                                color: Colors.grey.shade200,
+                                alignment: Alignment.center,
+                                child: const Icon(Icons.event, size: 48),
+                              ),
+                      ),
+                      Padding(
+                        padding: const EdgeInsets.all(24),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              event.name,
+                              style: theme.textTheme.headlineSmall
+                                  ?.copyWith(fontWeight: FontWeight.bold),
+                            ),
+                            const SizedBox(height: 8),
+                            _InfoRow(
+                              label: '主催',
+                              value: event.organizer.isNotEmpty
+                                  ? event.organizer
+                                  : '未設定',
+                            ),
+                            const SizedBox(height: 8),
+                            _InfoRow(
+                              label: '定員',
+                              value: event.capacity > 0
+                                  ? '${event.capacity}人'
+                                  : '設定なし',
+                            ),
+                            const SizedBox(height: 8),
+                            _InfoRow(
+                              label: '日付',
+                              value: _formatDate(event.startDateTime),
+                            ),
+                            const SizedBox(height: 8),
+                            _InfoRow(
                               label: '予約人数',
-                              value: '$count人',
-                            );
-                          },
+                              value: reservationCountLabel,
+                            ),
+                            const SizedBox(height: 8),
+                            _InfoRow(
+                              label: '時間',
+                              value: _formatTimeRange(
+                                event.startDateTime,
+                                event.endDateTime,
+                              ),
+                            ),
+                            const SizedBox(height: 24),
+                            Text(
+                              'イベント内容',
+                              style: theme.textTheme.titleMedium
+                                  ?.copyWith(fontWeight: FontWeight.bold),
+                            ),
+                            const SizedBox(height: 8),
+                            Text(
+                              event.content.isNotEmpty ? event.content : '記載なし',
+                              style: theme.textTheme.bodyMedium,
+                            ),
+                          ],
                         ),
-                        const SizedBox(height: 8),
-                        _InfoRow(
-                          label: '時間',
-                          value: _formatTimeRange(
-                            event.startDateTime,
-                            event.endDateTime,
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              SafeArea(
+                top: false,
+                child: Padding(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      SizedBox(
+                        width: double.infinity,
+                        child: FilledButton(
+                          style: FilledButton.styleFrom(
+                            backgroundColor: _hasReservation
+                                ? Colors.redAccent
+                                : Theme.of(context).colorScheme.primary,
+                            disabledBackgroundColor: Colors.grey.shade400,
+                            shape: const StadiumBorder(),
+                            padding: const EdgeInsets.symmetric(vertical: 16),
                           ),
+                          onPressed:
+                              (isReservationButtonDisabled || isReservationBusy)
+                                  ? null
+                                  : _onReservationButtonPressed,
+                          child:
+                              isReservationBusy && !isReservationButtonDisabled
+                                  ? const SizedBox(
+                                      width: 20,
+                                      height: 20,
+                                      child: CircularProgressIndicator(
+                                        color: Colors.white,
+                                        strokeWidth: 2,
+                                      ),
+                                    )
+                                  : Text(
+                                      _hasReservation
+                                          ? '予約を解除する'
+                                          : isEventFull
+                                              ? '定員に達しました'
+                                              : '予約する',
+                                    ),
                         ),
-                        const SizedBox(height: 24),
-                        Text(
-                          'イベント内容',
-                          style: theme.textTheme.titleMedium
-                              ?.copyWith(fontWeight: FontWeight.bold),
-                        ),
-                        const SizedBox(height: 8),
-                        Text(
-                          event.content.isNotEmpty ? event.content : '記載なし',
-                          style: theme.textTheme.bodyMedium,
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-          SafeArea(
-            top: false,
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  SizedBox(
-                    width: double.infinity,
-                    child: FilledButton(
-                      style: FilledButton.styleFrom(
-                        backgroundColor: _hasReservation
-                            ? Colors.redAccent
-                            : Theme.of(context).colorScheme.primary,
-                        shape: const StadiumBorder(),
-                        padding: const EdgeInsets.symmetric(vertical: 16),
                       ),
-                      onPressed:
-                          (_isReservationLoading || _isReservationProcessing)
-                              ? null
-                              : _onReservationButtonPressed,
-                      child: (_isReservationLoading || _isReservationProcessing)
-                          ? const SizedBox(
-                              width: 20,
-                              height: 20,
-                              child: CircularProgressIndicator(
-                                color: Colors.white,
-                                strokeWidth: 2,
-                              ),
-                            )
-                          : Text(_hasReservation ? '予約を解除する' : '予約する'),
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  SizedBox(
-                    width: double.infinity,
-                    child: FilledButton(
-                      style: FilledButton.styleFrom(
-                        backgroundColor: Colors.redAccent,
-                        shape: const StadiumBorder(),
-                        padding: const EdgeInsets.symmetric(vertical: 16),
+                      const SizedBox(height: 12),
+                      SizedBox(
+                        width: double.infinity,
+                        child: FilledButton(
+                          style: FilledButton.styleFrom(
+                            backgroundColor: Colors.redAccent,
+                            shape: const StadiumBorder(),
+                            padding: const EdgeInsets.symmetric(vertical: 16),
+                          ),
+                          onPressed: _isDeleting ? null : _confirmDelete,
+                          child: _isDeleting
+                              ? const SizedBox(
+                                  width: 20,
+                                  height: 20,
+                                  child: CircularProgressIndicator(
+                                    color: Colors.white,
+                                    strokeWidth: 2,
+                                  ),
+                                )
+                              : const Text('イベントを削除する'),
+                        ),
                       ),
-                      onPressed: _isDeleting ? null : _confirmDelete,
-                      child: _isDeleting
-                          ? const SizedBox(
-                              width: 20,
-                              height: 20,
-                              child: CircularProgressIndicator(
-                                color: Colors.white,
-                                strokeWidth: 2,
-                              ),
-                            )
-                          : const Text('イベントを削除する'),
-                    ),
+                    ],
                   ),
-                ],
+                ),
               ),
-            ),
+            ],
           ),
-        ],
-      ),
+        );
+      },
     );
   }
 

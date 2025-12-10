@@ -46,6 +46,13 @@ class _EditEventPageState extends State<EditEventPage> {
   late int _selectedCapacity;
   bool _isSubmitting = false;
 
+  TimeOfDay _roundToFiveMinutes(TimeOfDay time) {
+    const interval = 5;
+    final totalMinutes = time.hour * 60 + time.minute;
+    final adjusted = totalMinutes - (totalMinutes % interval);
+    return TimeOfDay(hour: adjusted ~/ 60, minute: adjusted % 60);
+  }
+
   @override
   void initState() {
     super.initState();
@@ -114,18 +121,22 @@ class _EditEventPageState extends State<EditEventPage> {
   }
 
   Future<void> _pickStartTime() async {
-    final initialTime = _startTime ?? TimeOfDay.now();
+    final baseTime = _startTime ?? TimeOfDay.now();
+    final initialTime = _roundToFiveMinutes(baseTime);
     final picked = await showTimePicker(
       context: context,
       initialTime: initialTime,
     );
     if (picked != null) {
+      final normalized = _roundToFiveMinutes(picked);
       setState(() {
-        _startTime = picked;
-        _startTimeController.text = _formatTimeLabel(picked);
-        if (_endTime == null || _compareTimes(_endTime!, picked) <= 0) {
-          final endInitial =
-              TimeOfDay(hour: (picked.hour + 1) % 24, minute: picked.minute);
+        _startTime = normalized;
+        _startTimeController.text = _formatTimeLabel(normalized);
+        if (_endTime == null || _compareTimes(_endTime!, normalized) <= 0) {
+          final endInitial = TimeOfDay(
+            hour: (normalized.hour + 1) % 24,
+            minute: normalized.minute,
+          );
           _endTime = endInitial;
           _endTimeController.text = _formatTimeLabel(endInitial);
         }
@@ -134,15 +145,17 @@ class _EditEventPageState extends State<EditEventPage> {
   }
 
   Future<void> _pickEndTime() async {
-    final initialTime = _endTime ?? _startTime ?? TimeOfDay.now();
+    final baseTime = _endTime ?? _startTime ?? TimeOfDay.now();
+    final initialTime = _roundToFiveMinutes(baseTime);
     final picked = await showTimePicker(
       context: context,
       initialTime: initialTime,
     );
     if (picked != null) {
+      final normalized = _roundToFiveMinutes(picked);
       setState(() {
-        _endTime = picked;
-        _endTimeController.text = _formatTimeLabel(picked);
+        _endTime = normalized;
+        _endTimeController.text = _formatTimeLabel(normalized);
       });
     }
   }

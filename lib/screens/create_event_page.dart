@@ -3,7 +3,9 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 
+import '../models/existing_event.dart';
 import '../services/event_service.dart';
+import '../services/existing_event_service.dart';
 
 class CreateEventPage extends StatefulWidget {
   const CreateEventPage({super.key});
@@ -38,6 +40,7 @@ class _CreateEventPageState extends State<CreateEventPage> {
       List<int>.generate(30, (index) => index + 1);
 
   final EventService _eventService = EventService();
+  final ExistingEventService _existingEventService = ExistingEventService();
   final ImagePicker _picker = ImagePicker();
   DateTime? _selectedDate;
   TimeOfDay? _startTime;
@@ -46,6 +49,23 @@ class _CreateEventPageState extends State<CreateEventPage> {
   bool _isSubmitting = false;
   int _selectedColorIndex = 5;
   int _selectedCapacity = 10;
+
+  TimeOfDay _roundToFiveMinutes(TimeOfDay time) {
+    const interval = 5;
+    final totalMinutes = time.hour * 60 + time.minute;
+    final adjusted = totalMinutes - (totalMinutes % interval);
+    return TimeOfDay(hour: adjusted ~/ 60, minute: adjusted % 60);
+  }
+
+  String _formatDateLabel(DateTime date) {
+    return '${date.year}/${date.month.toString().padLeft(2, '0')}/${date.day.toString().padLeft(2, '0')}';
+  }
+
+  String _formatTimeLabel(TimeOfDay time) {
+    final hour = time.hour.toString().padLeft(2, '0');
+    final minute = time.minute.toString().padLeft(2, '0');
+    return '$hour:$minute';
+  }
 
   @override
   void dispose() {
@@ -69,47 +89,47 @@ class _CreateEventPageState extends State<CreateEventPage> {
     if (picked != null) {
       setState(() {
         _selectedDate = picked;
-        _dateController.text =
-            '${picked.year}/${picked.month.toString().padLeft(2, '0')}/${picked.day.toString().padLeft(2, '0')}';
+        _dateController.text = _formatDateLabel(picked);
       });
     }
   }
 
   Future<void> _pickStartTime() async {
-    final initialTime = _startTime ?? TimeOfDay.now();
+    final baseTime = _startTime ?? TimeOfDay.now();
+    final initialTime = _roundToFiveMinutes(baseTime);
     final picked = await showTimePicker(
       context: context,
       initialTime: initialTime,
     );
     if (picked != null) {
+      final normalized = _roundToFiveMinutes(picked);
       setState(() {
-        _startTime = picked;
-        final hour = picked.hour.toString().padLeft(2, '0');
-        final minute = picked.minute.toString().padLeft(2, '0');
-        _startTimeController.text = '$hour:$minute';
-        if (_endTime == null || _compareTimes(_endTime!, picked) <= 0) {
-          final endInitial =
-              TimeOfDay(hour: (picked.hour + 1) % 24, minute: picked.minute);
+        _startTime = normalized;
+        _startTimeController.text = _formatTimeLabel(normalized);
+        if (_endTime == null || _compareTimes(_endTime!, normalized) <= 0) {
+          final endInitial = TimeOfDay(
+            hour: (normalized.hour + 1) % 24,
+            minute: normalized.minute,
+          );
           _endTime = endInitial;
-          _endTimeController.text =
-              '${endInitial.hour.toString().padLeft(2, '0')}:${endInitial.minute.toString().padLeft(2, '0')}';
+          _endTimeController.text = _formatTimeLabel(endInitial);
         }
       });
     }
   }
 
   Future<void> _pickEndTime() async {
-    final initialTime = _endTime ?? _startTime ?? TimeOfDay.now();
+    final baseTime = _endTime ?? _startTime ?? TimeOfDay.now();
+    final initialTime = _roundToFiveMinutes(baseTime);
     final picked = await showTimePicker(
       context: context,
       initialTime: initialTime,
     );
     if (picked != null) {
+      final normalized = _roundToFiveMinutes(picked);
       setState(() {
-        _endTime = picked;
-        final hour = picked.hour.toString().padLeft(2, '0');
-        final minute = picked.minute.toString().padLeft(2, '0');
-        _endTimeController.text = '$hour:$minute';
+        _endTime = normalized;
+        _endTimeController.text = _formatTimeLabel(normalized);
       });
     }
   }
@@ -198,6 +218,41 @@ class _CreateEventPageState extends State<CreateEventPage> {
     }
   }
 
+  Future<void> _openExistingEventPicker() async {
+    final eventsStream = _existingEventService.watchExistingEvents();
+    final selected = await showModalBottomSheet<ExistingEvent>(
+      context: context,
+      isScrollControlled: true,
+      builder: (_) =>
+          _ExistingEventPickerSheet(existingEventsStream: eventsStream),
+    );
+    if (selected == null) return;
+    _applyExistingEventToForm(selected);
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('${selected.name}の情報を読み込みました')),
+    );
+  }
+
+  void _applyExistingEventToForm(ExistingEvent event) {
+    if (!mounted) return;
+    final colorIndex = _colorPalette.indexWhere(
+      (color) => color.value == event.colorValue,
+    );
+
+    setState(() {
+      _nameController.text = event.name;
+      _organizerController.text = event.organizer;
+      _contentController.text = event.content;
+      if (colorIndex >= 0) {
+        _selectedColorIndex = colorIndex;
+      }
+      if (_capacityOptions.contains(event.capacity)) {
+        _selectedCapacity = event.capacity;
+      }
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -211,6 +266,12 @@ class _CreateEventPageState extends State<CreateEventPage> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
+              FilledButton.tonalIcon(
+                onPressed: _openExistingEventPicker,
+                icon: const Icon(Icons.history),
+                label: const Text('既存のイベントを呼び出す'),
+              ),
+              const SizedBox(height: 24),
               TextFormField(
                 controller: _nameController,
                 decoration: const InputDecoration(labelText: 'イベント名'),
@@ -474,5 +535,95 @@ class _ColorSelector extends StatelessWidget {
         ),
       ],
     );
+  }
+}
+
+class _ExistingEventPickerSheet extends StatelessWidget {
+  const _ExistingEventPickerSheet({required this.existingEventsStream});
+
+  final Stream<List<ExistingEvent>> existingEventsStream;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return SafeArea(
+      child: FractionallySizedBox(
+        heightFactor: 0.85,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Center(
+                child: Container(
+                  width: 48,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: Colors.grey.shade400,
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 16),
+              Text(
+                '既存のイベントを選択',
+                style: theme.textTheme.titleMedium?.copyWith(
+                  fontWeight: FontWeight.bold,
+                ),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 16),
+              Expanded(
+                child: StreamBuilder<List<ExistingEvent>>(
+                  stream: existingEventsStream,
+                  builder: (context, snapshot) {
+                    if (snapshot.connectionState == ConnectionState.waiting) {
+                      return const Center(child: CircularProgressIndicator());
+                    }
+                    if (snapshot.hasError) {
+                      return const Center(
+                        child: Text('イベントの取得に失敗しました'),
+                      );
+                    }
+                    final events = snapshot.data ?? const <ExistingEvent>[];
+                    if (events.isEmpty) {
+                      return const Center(
+                        child: Text('表示できるイベントがありません'),
+                      );
+                    }
+                    return ListView.separated(
+                      itemCount: events.length,
+                      separatorBuilder: (_, __) => const Divider(height: 1),
+                      itemBuilder: (context, index) {
+                        final event = events[index];
+                        return ListTile(
+                          leading: CircleAvatar(
+                            backgroundColor: event.color,
+                            child: const Icon(Icons.event, color: Colors.white),
+                          ),
+                          title: Text(event.name),
+                          subtitle: Text(
+                            _buildSubtitle(event),
+                          ),
+                          isThreeLine: true,
+                          onTap: () => Navigator.of(context).pop(event),
+                        );
+                      },
+                    );
+                  },
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  static String _buildSubtitle(ExistingEvent event) {
+    final organizer =
+        event.organizer.isEmpty ? '主催者未設定' : '主催: ${event.organizer}';
+    final capacity = event.capacity > 0 ? '定員: ${event.capacity}人' : '定員未設定';
+    return '$organizer\n$capacity';
   }
 }
