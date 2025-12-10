@@ -15,6 +15,7 @@ class _QrCodePageState extends State<QrCodePage> {
     detectionSpeed: DetectionSpeed.noDuplicates,
     facing: CameraFacing.back,
   );
+  final TextEditingController _manualInputController = TextEditingController();
 
   String? _scanResult;
   bool _hasResult = false;
@@ -22,6 +23,7 @@ class _QrCodePageState extends State<QrCodePage> {
   @override
   void dispose() {
     _controller.dispose();
+    _manualInputController.dispose();
     super.dispose();
   }
 
@@ -44,7 +46,18 @@ class _QrCodePageState extends State<QrCodePage> {
       _scanResult = null;
       _hasResult = false;
     });
+    _manualInputController.clear();
     await _controller.start();
+  }
+
+  void _applyManualInput() {
+    final manualValue = _manualInputController.text.trim();
+    if (manualValue.isEmpty) return;
+    _controller.stop();
+    setState(() {
+      _scanResult = manualValue;
+      _hasResult = true;
+    });
   }
 
   @override
@@ -54,8 +67,7 @@ class _QrCodePageState extends State<QrCodePage> {
       body: SafeArea(
         child: StreamBuilder<Map<String, dynamic>?>(
           stream: FirebaseAuthService().watchCurrentUserProfile(),
-          builder: (context, snapshot) {
-            final name = (snapshot.data?['name'] as String?) ?? 'お客さま';
+          builder: (context, _) {
             return Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
@@ -65,11 +77,6 @@ class _QrCodePageState extends State<QrCodePage> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(
-                        '$name さん、QRコードをスキャンしてください',
-                        style: Theme.of(context).textTheme.titleMedium,
-                      ),
-                      const SizedBox(height: 8),
                       Text(
                         '画面中央の枠にコードを合わせると自動で読み取ります。',
                         style: Theme.of(context).textTheme.bodyMedium,
@@ -123,7 +130,24 @@ class _QrCodePageState extends State<QrCodePage> {
                   ),
                 ),
                 const SizedBox(height: 12),
-                _ScannerControls(controller: _controller),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  child: TextField(
+                    controller: _manualInputController,
+                    decoration: InputDecoration(
+                      labelText: 'コードを手入力',
+                      hintText: 'テキストを入力してください',
+                      suffixIcon: IconButton(
+                        onPressed: _applyManualInput,
+                        icon: const Icon(Icons.check),
+                        tooltip: '入力内容を反映',
+                      ),
+                    ),
+                    textInputAction: TextInputAction.done,
+                    onSubmitted: (_) => _applyManualInput(),
+                  ),
+                ),
+                const SizedBox(height: 12),
                 Padding(
                   padding: const EdgeInsets.all(16),
                   child: Column(
@@ -174,46 +198,6 @@ class _QrCodePageState extends State<QrCodePage> {
           },
         ),
       ),
-    );
-  }
-}
-
-class _ScannerControls extends StatelessWidget {
-  const _ScannerControls({required this.controller});
-
-  final MobileScannerController controller;
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: [
-        ValueListenableBuilder<MobileScannerState>(
-          valueListenable: controller,
-          builder: (context, state, _) {
-            final torchState = state.torchState;
-            final isOn = torchState == TorchState.on;
-            final isAvailable = torchState != TorchState.unavailable;
-            return IconButton.filledTonal(
-              onPressed: isAvailable ? () => controller.toggleTorch() : null,
-              icon: Icon(isOn ? Icons.flash_on : Icons.flash_off),
-              tooltip: isOn ? 'ライトを消す' : 'ライトを点ける',
-            );
-          },
-        ),
-        const SizedBox(width: 16),
-        ValueListenableBuilder<MobileScannerState>(
-          valueListenable: controller,
-          builder: (context, state, _) {
-            final isBack = state.cameraDirection == CameraFacing.back;
-            return IconButton.filledTonal(
-              onPressed: () => controller.switchCamera(),
-              icon: Icon(isBack ? Icons.camera_front : Icons.camera_rear),
-              tooltip: isBack ? 'インカメラに切替' : 'バックカメラに切替',
-            );
-          },
-        ),
-      ],
     );
   }
 }

@@ -29,6 +29,27 @@
   <!-- Favicon -->
   <link rel="icon" type="image/png" href="favicon.png"/>
 
+  <!-- Firebase Web SDKs -->
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-storage-compat.js"></script>
+  <script>
+    // Web version of firebase_options.dart
+    const firebaseConfig = {
+      apiKey: 'AIzaSyCcrYyh4HB9yjiLaaSWhwlmYdtHywNlZc8',
+      appId: '1:618793511488:web:8b94886a37ebeb39520da5',
+      messagingSenderId: '618793511488',
+      projectId: 'cocoshibaapp',
+      storageBucket: 'cocoshibaapp.firebasestorage.app',
+      authDomain: 'cocoshibaapp.firebaseapp.com',
+      measurementId: 'G-D2G572D4NH',
+    };
+    if (firebase.apps.length === 0) {
+      firebase.initializeApp(firebaseConfig);
+    }
+  </script>
+
   <title>cocoshiba_app</title>
   <link rel="manifest" href="manifest.json">
 </head>
