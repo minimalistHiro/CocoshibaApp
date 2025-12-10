@@ -1,6 +1,10 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
+import '../models/calendar_event.dart';
 import '../services/firebase_auth_service.dart';
+import '../services/event_service.dart';
 import '../widgets/point_card.dart';
 import 'notification_page.dart';
 
@@ -13,12 +17,15 @@ class HomePage extends StatefulWidget {
 
 class _HomePageState extends State<HomePage> {
   final FirebaseAuthService _authService = FirebaseAuthService();
+  final EventService _eventService = EventService();
   late Future<int> _pointsFuture;
+  late final Stream<List<CalendarEvent>> _upcomingEventsStream;
 
   @override
   void initState() {
     super.initState();
     _pointsFuture = _authService.fetchCurrentUserPoints();
+    _upcomingEventsStream = _eventService.watchUpcomingEvents(limit: 5);
   }
 
   void _showNotification(BuildContext context) {
@@ -175,7 +182,233 @@ class _HomePageState extends State<HomePage> {
               ),
             ),
           ),
+          const SizedBox(height: 32),
+          StreamBuilder<List<CalendarEvent>>(
+            stream: _upcomingEventsStream,
+            builder: (context, snapshot) {
+              final events = (snapshot.data ?? const <CalendarEvent>[])
+                  .where((event) => event.imageUrls.isNotEmpty)
+                  .take(5)
+                  .toList(growable: false);
+
+              if (snapshot.connectionState == ConnectionState.waiting &&
+                  events.isEmpty) {
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: const [
+                    _UpcomingEventsHeader(),
+                    SizedBox(height: 12),
+                    Center(
+                      child: Padding(
+                        padding: EdgeInsets.symmetric(vertical: 32),
+                        child: CircularProgressIndicator(),
+                      ),
+                    ),
+                  ],
+                );
+              }
+
+              if (events.isEmpty) {
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const _UpcomingEventsHeader(),
+                    const SizedBox(height: 12),
+                    Container(
+                      padding: const EdgeInsets.all(24),
+                      decoration: BoxDecoration(
+                        color: Colors.grey.shade100,
+                        borderRadius: BorderRadius.circular(24),
+                      ),
+                      child: Text(
+                        '直近のイベントはまだありません',
+                        style: Theme.of(context)
+                            .textTheme
+                            .bodyMedium
+                            ?.copyWith(color: Colors.grey.shade600),
+                      ),
+                    ),
+                  ],
+                );
+              }
+
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const _UpcomingEventsHeader(),
+                  const SizedBox(height: 12),
+                  _UpcomingEventCarousel(events: events),
+                ],
+              );
+            },
+          ),
         ],
+      ),
+    );
+  }
+}
+
+class _UpcomingEventsHeader extends StatelessWidget {
+  const _UpcomingEventsHeader();
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Text(
+      '直近のイベント',
+      style: theme.textTheme.titleMedium?.copyWith(
+        fontWeight: FontWeight.bold,
+      ),
+    );
+  }
+}
+
+class _UpcomingEventCarousel extends StatefulWidget {
+  const _UpcomingEventCarousel({required this.events});
+
+  final List<CalendarEvent> events;
+
+  @override
+  State<_UpcomingEventCarousel> createState() => _UpcomingEventCarouselState();
+}
+
+class _UpcomingEventCarouselState extends State<_UpcomingEventCarousel> {
+  late final PageController _controller;
+  Timer? _autoScrollTimer;
+  int _currentPage = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = PageController();
+    _startAutoScroll();
+  }
+
+  @override
+  void didUpdateWidget(covariant _UpcomingEventCarousel oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.events.length != widget.events.length) {
+      _currentPage = 0;
+      if (_controller.hasClients) {
+        _controller.jumpToPage(0);
+      }
+      _startAutoScroll();
+    }
+  }
+
+  void _startAutoScroll() {
+    _autoScrollTimer?.cancel();
+    if (widget.events.length < 2) return;
+    _autoScrollTimer = Timer.periodic(const Duration(seconds: 3), (_) {
+      if (!mounted || !_controller.hasClients) return;
+      _currentPage = (_currentPage + 1) % widget.events.length;
+      _controller.animateToPage(
+        _currentPage,
+        duration: const Duration(milliseconds: 500),
+        curve: Curves.easeInOut,
+      );
+    });
+  }
+
+  @override
+  void dispose() {
+    _autoScrollTimer?.cancel();
+    _controller.dispose();
+    super.dispose();
+  }
+
+  String _formatDate(DateTime dateTime) {
+    final month = dateTime.month.toString().padLeft(2, '0');
+    final day = dateTime.day.toString().padLeft(2, '0');
+    return '${dateTime.year}/$month/$day';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AspectRatio(
+      aspectRatio: 3 / 4,
+      child: PageView.builder(
+        controller: _controller,
+        itemCount: widget.events.length,
+        onPageChanged: (index) => _currentPage = index,
+        itemBuilder: (context, index) {
+          final event = widget.events[index];
+          final imageUrl = event.imageUrls.first;
+          final dateLabel = _formatDate(event.startDateTime);
+
+          return Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 4),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(28),
+              child: Stack(
+                fit: StackFit.expand,
+                children: [
+                  Image.network(
+                    imageUrl,
+                    fit: BoxFit.cover,
+                    loadingBuilder: (context, child, loadingProgress) {
+                      if (loadingProgress == null) return child;
+                      return const Center(child: CircularProgressIndicator());
+                    },
+                    errorBuilder: (context, error, stackTrace) {
+                      return Container(
+                        color: Colors.grey.shade200,
+                        alignment: Alignment.center,
+                        child: const Icon(Icons.image_not_supported_outlined,
+                            size: 48, color: Colors.black38),
+                      );
+                    },
+                  ),
+                  Positioned.fill(
+                    child: DecoratedBox(
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          begin: Alignment.topCenter,
+                          end: Alignment.bottomCenter,
+                          colors: [
+                            Colors.transparent,
+                            Colors.black.withOpacity(0.2),
+                            Colors.black.withOpacity(0.6),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                  Positioned(
+                    left: 16,
+                    right: 16,
+                    bottom: 20,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          dateLabel,
+                          style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                color: Colors.white,
+                                fontWeight: FontWeight.w600,
+                              ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          event.name,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: Theme.of(context)
+                              .textTheme
+                              .titleMedium
+                              ?.copyWith(
+                                color: Colors.white,
+                                fontWeight: FontWeight.bold,
+                              ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          );
+        },
       ),
     );
   }

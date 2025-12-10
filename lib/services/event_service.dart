@@ -124,6 +124,31 @@ class EventService {
         );
   }
 
+  Stream<List<CalendarEvent>> watchUpcomingEvents({
+    DateTime? from,
+    int limit = 5,
+  }) {
+    final DateTime start = from ?? DateTime.now();
+    final Timestamp startTimestamp = Timestamp.fromDate(
+      DateTime(start.year, start.month, start.day),
+    );
+
+    Query<Map<String, dynamic>> query = _eventsRef
+        .where('startDateTime', isGreaterThanOrEqualTo: startTimestamp)
+        .orderBy('startDateTime');
+
+    if (limit > 0) {
+      query = query.limit(limit);
+    }
+
+    return query.snapshots().map(
+          (snapshot) => snapshot.docs
+              .map(CalendarEvent.fromDocument)
+              .where((event) => !event.isClosedDay)
+              .toList(growable: false),
+        );
+  }
+
   Future<bool> hasReservation({
     required String eventId,
     required String userId,
