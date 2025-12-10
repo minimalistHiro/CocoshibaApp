@@ -12,6 +12,13 @@ class HomePage extends StatefulWidget {
 
 class _HomePageState extends State<HomePage> {
   final FirebaseAuthService _authService = FirebaseAuthService();
+  late Future<int> _pointsFuture;
+
+  @override
+  void initState() {
+    super.initState();
+    _pointsFuture = _authService.fetchCurrentUserPoints();
+  }
 
   void _showNotification(BuildContext context) {
     ScaffoldMessenger.of(context).showSnackBar(
@@ -58,6 +65,25 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
+  Future<void> _refreshPoints() async {
+    final future = _authService.fetchCurrentUserPoints();
+    setState(() {
+      _pointsFuture = future;
+    });
+    try {
+      await future;
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('ポイントを更新しました')),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('ポイントの取得に失敗しました')),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return SafeArea(
@@ -66,9 +92,36 @@ class _HomePageState extends State<HomePage> {
         children: [
           _buildHeader(context),
           const SizedBox(height: 32),
-          PointCard(
-            points: 3003,
-            onRefresh: () => _showNotification(context),
+          FutureBuilder<int>(
+            future: _pointsFuture,
+            builder: (context, snapshot) {
+              final isLoading = snapshot.connectionState == ConnectionState.waiting;
+              final points = snapshot.data ?? 0;
+
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  PointCard(
+                    points: points,
+                    isLoading: isLoading,
+                    onRefresh: () {
+                      _refreshPoints();
+                    },
+                  ),
+                  if (snapshot.hasError && !isLoading)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 12),
+                      child: Text(
+                        'ポイントの取得に失敗しました。更新ボタンをお試しください。',
+                        style: Theme.of(context)
+                            .textTheme
+                            .bodySmall
+                            ?.copyWith(color: Theme.of(context).colorScheme.error),
+                      ),
+                    ),
+                ],
+              );
+            },
           ),
           const SizedBox(height: 32),
           Text(

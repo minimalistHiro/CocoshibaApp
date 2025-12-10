@@ -93,6 +93,7 @@ class FirebaseAuthService {
         'ageGroup': ageGroup,
         'area': area,
         'photoUrl': photoUrl,
+        'points': 0,
         'createdAt': FieldValue.serverTimestamp(),
       });
     }
@@ -176,6 +177,28 @@ class FirebaseAuthService {
     await _firestore.collection('users').doc(uid).delete();
     await user.delete();
     await _auth.signOut();
+  }
+
+  Future<int> fetchCurrentUserPoints() async {
+    final user = currentUser;
+    if (user == null) {
+      throw FirebaseAuthException(
+        code: 'no-current-user',
+        message: 'ログインしていません',
+      );
+    }
+
+    final doc = await _firestore.collection('users').doc(user.uid).get();
+    final data = doc.data();
+    final pointsValue = data?['points'];
+
+    if (pointsValue is int) {
+      return pointsValue;
+    } else if (pointsValue is num) {
+      return pointsValue.toInt();
+    }
+
+    return 0;
   }
 
   Future<String> _uploadProfileImage(String uid, Uint8List data) async {
