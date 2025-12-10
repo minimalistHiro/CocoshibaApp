@@ -43,7 +43,7 @@ class AuthChoicePage extends StatelessWidget {
                 padding: const EdgeInsets.symmetric(vertical: 16),
               ),
               onPressed: () => _open(context, const SignUpPage()),
-              child: const Text('新規作成'),
+              child: const Text('新規会員登録'),
             ),
             const SizedBox(height: 16),
             OutlinedButton(

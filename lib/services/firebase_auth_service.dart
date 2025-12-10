@@ -63,6 +63,8 @@ class FirebaseAuthService {
 
   Future<UserCredential> signUp({
     required String name,
+    required String ageGroup,
+    required String area,
     required String email,
     required String password,
     Uint8List? profileImageBytes,
@@ -88,6 +90,8 @@ class FirebaseAuthService {
       await _firestore.collection('users').doc(user.uid).set({
         'name': trimmedName,
         'email': trimmedEmail,
+        'ageGroup': ageGroup,
+        'area': area,
         'photoUrl': photoUrl,
         'createdAt': FieldValue.serverTimestamp(),
       });
@@ -110,6 +114,8 @@ class FirebaseAuthService {
 
   Future<void> updateProfile({
     required String name,
+    required String ageGroup,
+    required String area,
     String? bio,
     Uint8List? profileImageBytes,
   }) async {
@@ -128,6 +134,8 @@ class FirebaseAuthService {
 
     final Map<String, dynamic> updateData = {
       'name': trimmedName,
+      'ageGroup': ageGroup,
+      'area': area,
       'updatedAt': FieldValue.serverTimestamp(),
     };
 

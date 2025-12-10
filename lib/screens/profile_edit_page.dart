@@ -25,6 +25,26 @@ class _ProfileEditPageState extends State<ProfileEditPage> {
   String? _loadError;
   Uint8List? _selectedImageBytes;
   String? _photoUrl;
+  String? _selectedAgeGroup;
+  String? _selectedArea;
+
+  final _ageGroups = const [
+    '10代以下',
+    '20代',
+    '30代',
+    '40代',
+    '50代',
+    '60代以上',
+  ];
+
+  final _areas = const [
+    '川口市',
+    '蕨市',
+    'さいたま市',
+    '戸田市',
+    'その他県内',
+    '県外',
+  ];
 
   @override
   void initState() {
@@ -51,12 +71,16 @@ class _ProfileEditPageState extends State<ProfileEditPage> {
       final fallbackName = user?.displayName ?? '';
       final name = (profile?['name'] as String?) ?? fallbackName;
       final bio = (profile?['bio'] as String?) ?? '';
+      final ageGroup = profile?['ageGroup'] as String?;
+      final area = profile?['area'] as String?;
       if (!mounted) return;
       _nameController.text = name;
       _bioController.text = bio;
       setState(() {
         _photoUrl = photoUrl;
         _selectedImageBytes = null;
+        _selectedAgeGroup = ageGroup;
+        _selectedArea = area;
       });
     } catch (_) {
       if (!mounted) return;
@@ -72,12 +96,20 @@ class _ProfileEditPageState extends State<ProfileEditPage> {
 
   Future<void> _saveProfile() async {
     if (!_formKey.currentState!.validate()) return;
+    if (_selectedAgeGroup == null || _selectedArea == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('年代と住所を選択してください')),
+      );
+      return;
+    }
 
     setState(() => _isSaving = true);
     final messenger = ScaffoldMessenger.of(context);
     try {
       await _authService.updateProfile(
         name: _nameController.text,
+        ageGroup: _selectedAgeGroup!,
+        area: _selectedArea!,
         bio: _bioController.text,
         profileImageBytes: _selectedImageBytes,
       );
@@ -234,6 +266,51 @@ class _ProfileEditPageState extends State<ProfileEditPage> {
                               }
                               if (value.trim().length > 40) {
                                 return '40文字以内で入力してください';
+                              }
+                              return null;
+                            },
+                          ),
+                          const SizedBox(height: 24),
+                          DropdownButtonFormField<String>(
+                            value: _selectedAgeGroup,
+                            decoration: const InputDecoration(labelText: '年代'),
+                            items: _ageGroups
+                                .map(
+                                  (age) => DropdownMenuItem<String>(
+                                    value: age,
+                                    child: Text(age),
+                                  ),
+                                )
+                                .toList(),
+                            onChanged: _isSaving
+                                ? null
+                                : (value) =>
+                                    setState(() => _selectedAgeGroup = value),
+                            validator: (value) {
+                              if (value == null || value.isEmpty) {
+                                return '年代を選択してください';
+                              }
+                              return null;
+                            },
+                          ),
+                          const SizedBox(height: 24),
+                          DropdownButtonFormField<String>(
+                            value: _selectedArea,
+                            decoration: const InputDecoration(labelText: '住所'),
+                            items: _areas
+                                .map(
+                                  (area) => DropdownMenuItem<String>(
+                                    value: area,
+                                    child: Text(area),
+                                  ),
+                                )
+                                .toList(),
+                            onChanged: _isSaving
+                                ? null
+                                : (value) => setState(() => _selectedArea = value),
+                            validator: (value) {
+                              if (value == null || value.isEmpty) {
+                                return '住所を選択してください';
                               }
                               return null;
                             },
