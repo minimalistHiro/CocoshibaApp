@@ -158,7 +158,11 @@ class FirebaseAuthService {
         .set(updateData, SetOptions(merge: true));
   }
 
-  Future<void> updateLoginInfo({
+  /// Updates email and/or password.
+  ///
+  /// Returns `true` if an email verification is required before the email
+  /// change takes effect.
+  Future<bool> updateLoginInfo({
     required String email,
     required String currentPassword,
     String? newPassword,
@@ -180,21 +184,28 @@ class FirebaseAuthService {
 
     await user.reauthenticateWithCredential(credential);
 
-    if (trimmedEmail.isNotEmpty && trimmedEmail != user.email) {
-      await user.updateEmail(trimmedEmail);
+    final bool emailChanged =
+        trimmedEmail.isNotEmpty && trimmedEmail != (user.email ?? '').trim();
+
+    if (emailChanged) {
+      await user.verifyBeforeUpdateEmail(trimmedEmail);
     }
 
     if (trimmedNewPassword != null && trimmedNewPassword.isNotEmpty) {
       await user.updatePassword(trimmedNewPassword);
     }
 
-    await _firestore.collection('users').doc(user.uid).set(
-      {
-        'email': trimmedEmail,
-        'updatedAt': FieldValue.serverTimestamp(),
-      },
-      SetOptions(merge: true),
-    );
+    final updateData = <String, dynamic>{
+      'email': trimmedEmail,
+      'updatedAt': FieldValue.serverTimestamp(),
+    };
+
+    await _firestore
+        .collection('users')
+        .doc(user.uid)
+        .set(updateData, SetOptions(merge: true));
+
+    return emailChanged;
   }
 
   Future<void> deleteAccount() async {

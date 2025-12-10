@@ -50,7 +50,7 @@ class _LoginInfoUpdatePageState extends State<LoginInfoUpdatePage> {
     final navigator = Navigator.of(context);
 
     try {
-      await _authService.updateLoginInfo(
+      final verificationRequired = await _authService.updateLoginInfo(
         email: _emailController.text,
         currentPassword: _currentPasswordController.text,
         newPassword: _newPasswordController.text.isNotEmpty
@@ -59,7 +59,13 @@ class _LoginInfoUpdatePageState extends State<LoginInfoUpdatePage> {
       );
       if (!mounted) return;
       messenger.showSnackBar(
-        const SnackBar(content: Text('ログイン情報を更新しました')),
+        SnackBar(
+          content: Text(
+            verificationRequired
+                ? '新しいメールアドレス宛に確認メールを送信しました。メール内の手順を完了すると変更が適用されます。'
+                : 'ログイン情報を更新しました',
+          ),
+        ),
       );
       navigator.pop();
     } on FirebaseAuthException catch (e) {
