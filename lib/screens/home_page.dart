@@ -3,8 +3,9 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../models/calendar_event.dart';
-import '../services/firebase_auth_service.dart';
 import '../services/event_service.dart';
+import '../services/firebase_auth_service.dart';
+import '../services/notification_service.dart';
 import '../widgets/point_card.dart';
 import 'notification_page.dart';
 
@@ -18,14 +19,18 @@ class HomePage extends StatefulWidget {
 class _HomePageState extends State<HomePage> {
   final FirebaseAuthService _authService = FirebaseAuthService();
   final EventService _eventService = EventService();
+  final NotificationService _notificationService = NotificationService();
   late Future<int> _pointsFuture;
   late final Stream<List<CalendarEvent>> _upcomingEventsStream;
+  late final Stream<bool> _hasUnreadNotificationsStream;
 
   @override
   void initState() {
     super.initState();
     _pointsFuture = _authService.fetchCurrentUserPoints();
     _upcomingEventsStream = _eventService.watchUpcomingEvents(limit: 5);
+    _hasUnreadNotificationsStream = _notificationService
+        .watchHasUnreadNotifications(_authService.currentUser?.uid);
   }
 
   void _showNotification(BuildContext context) {
@@ -65,9 +70,41 @@ class _HomePageState extends State<HomePage> {
               ],
             ),
             const SizedBox(width: 16),
-            IconButton(
-              onPressed: () => _showNotification(context),
-              icon: const Icon(Icons.notifications_outlined),
+            StreamBuilder<bool>(
+              stream: _hasUnreadNotificationsStream,
+              initialData: false,
+              builder: (context, snapshot) {
+                final hasUnread = snapshot.data ?? false;
+                return Stack(
+                  clipBehavior: Clip.none,
+                  children: [
+                    IconButton(
+                      onPressed: () => _showNotification(context),
+                      icon: const Icon(
+                        Icons.notifications_outlined,
+                        size: 30,
+                      ),
+                    ),
+                    if (hasUnread)
+                      Positioned(
+                        right: 8,
+                        top: 8,
+                        child: Container(
+                          width: 16,
+                          height: 16,
+                          decoration: BoxDecoration(
+                            color: Colors.redAccent,
+                            shape: BoxShape.circle,
+                            border: Border.all(
+                              color: Theme.of(context).colorScheme.surface,
+                              width: 2,
+                            ),
+                          ),
+                        ),
+                      ),
+                  ],
+                );
+              },
             ),
           ],
         );

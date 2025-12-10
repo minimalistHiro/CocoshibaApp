@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:typed_data';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -17,6 +18,11 @@ class NotificationService {
 
   CollectionReference<Map<String, dynamic>> get _notificationsRef =>
       _firestore.collection('notifications');
+  CollectionReference<Map<String, dynamic>> _userReadsRef(String userId) =>
+      _firestore
+          .collection('users')
+          .doc(userId)
+          .collection('notificationReads');
 
   Stream<List<AppNotification>> watchNotifications() {
     return _notificationsRef
@@ -54,5 +60,71 @@ class NotificationService {
       'imageUrl': imageUrl,
       'createdAt': FieldValue.serverTimestamp(),
     });
+  }
+
+  Stream<Set<String>> watchReadNotificationIds(String? userId) {
+    if (userId == null || userId.isEmpty) {
+      return Stream.value(<String>{});
+    }
+    return _userReadsRef(userId).snapshots().map(
+          (snapshot) => snapshot.docs.map((doc) => doc.id).toSet(),
+        );
+  }
+
+  Future<void> markAsRead({
+    required String? userId,
+    required String notificationId,
+  }) async {
+    if (userId == null || userId.isEmpty) {
+      return;
+    }
+    await _userReadsRef(userId).doc(notificationId).set(
+      {
+        'readAt': FieldValue.serverTimestamp(),
+      },
+      SetOptions(merge: true),
+    );
+  }
+
+  Stream<bool> watchHasUnreadNotifications(String? userId) {
+    if (userId == null || userId.isEmpty) {
+      return Stream<bool>.value(false);
+    }
+
+    final controller = StreamController<bool>.broadcast();
+    List<AppNotification> notifications = const [];
+    Set<String> readIds = const <String>{};
+    StreamSubscription<List<AppNotification>>? notificationSub;
+    StreamSubscription<Set<String>>? readSub;
+
+    void emitUnreadState() {
+      final hasUnread =
+          notifications.any((notification) => !readIds.contains(notification.id));
+      controller.add(hasUnread);
+    }
+
+    controller.onListen = () {
+      notificationSub = watchNotifications().listen(
+        (value) {
+          notifications = value;
+          emitUnreadState();
+        },
+        onError: controller.addError,
+      );
+      readSub = watchReadNotificationIds(userId).listen(
+        (value) {
+          readIds = value;
+          emitUnreadState();
+        },
+        onError: controller.addError,
+      );
+    };
+
+    controller.onCancel = () async {
+      await notificationSub?.cancel();
+      await readSub?.cancel();
+    };
+
+    return controller.stream;
   }
 }

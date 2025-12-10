@@ -1,6 +1,9 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../models/app_notification.dart';
+import '../services/firebase_auth_service.dart';
 import '../services/notification_service.dart';
 import '../utils/relative_time_formatter.dart';
 import '../widgets/notification_category_chip.dart';
@@ -16,6 +19,16 @@ class NotificationPage extends StatefulWidget {
 
 class _NotificationPageState extends State<NotificationPage> {
   final NotificationService _notificationService = NotificationService();
+  final FirebaseAuthService _authService = FirebaseAuthService();
+
+  late final Stream<Set<String>> _readNotificationIdsStream;
+
+  @override
+  void initState() {
+    super.initState();
+    _readNotificationIdsStream = _notificationService
+        .watchReadNotificationIds(_authService.currentUser?.uid);
+  }
 
   Future<void> _openCreate() async {
     final created = await Navigator.of(context).push<bool>(
@@ -29,6 +42,12 @@ class _NotificationPageState extends State<NotificationPage> {
   }
 
   void _openDetail(AppNotification notification) {
+    unawaited(
+      _notificationService.markAsRead(
+        userId: _authService.currentUser?.uid,
+        notificationId: notification.id,
+      ),
+    );
     Navigator.of(context).push(
       MaterialPageRoute(
         builder: (_) => NotificationDetailPage(notification: notification),
@@ -88,15 +107,23 @@ class _NotificationPageState extends State<NotificationPage> {
               ),
             );
           }
-          return ListView.separated(
-            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-            itemCount: notifications.length,
-            separatorBuilder: (_, __) => const SizedBox(height: 12),
-            itemBuilder: (context, index) {
-              final notification = notifications[index];
-              return _NotificationCard(
-                notification: notification,
-                onTap: () => _openDetail(notification),
+          return StreamBuilder<Set<String>>(
+            stream: _readNotificationIdsStream,
+            builder: (context, readSnapshot) {
+              final readIds = readSnapshot.data ?? const <String>{};
+              return ListView.separated(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+                itemCount: notifications.length,
+                separatorBuilder: (_, __) => const SizedBox(height: 12),
+                itemBuilder: (context, index) {
+                  final notification = notifications[index];
+                  return _NotificationCard(
+                    notification: notification,
+                    onTap: () => _openDetail(notification),
+                    isRead: readIds.contains(notification.id),
+                  );
+                },
               );
             },
           );
@@ -110,17 +137,22 @@ class _NotificationCard extends StatelessWidget {
   const _NotificationCard({
     required this.notification,
     required this.onTap,
+    required this.isRead,
   });
 
   final AppNotification notification;
   final VoidCallback onTap;
+  final bool isRead;
 
   @override
   Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final textTheme = Theme.of(context).textTheme;
+
     return Material(
       elevation: 2,
       borderRadius: BorderRadius.circular(16),
-      color: Theme.of(context).colorScheme.surface,
+      color: colorScheme.surface,
       child: InkWell(
         borderRadius: BorderRadius.circular(16),
         onTap: onTap,
@@ -134,7 +166,7 @@ class _NotificationCard extends StatelessWidget {
                 children: [
                   Icon(
                     Icons.notifications_active_outlined,
-                    color: Theme.of(context).colorScheme.primary,
+                    color: colorScheme.primary,
                   ),
                   const SizedBox(width: 12),
                   Expanded(
@@ -143,10 +175,10 @@ class _NotificationCard extends StatelessWidget {
                       children: [
                         Text(
                           notification.title,
-                          style: Theme.of(context)
-                              .textTheme
-                              .titleMedium
-                              ?.copyWith(fontWeight: FontWeight.w600),
+                          style: textTheme.titleMedium?.copyWith(
+                            fontWeight:
+                                isRead ? FontWeight.w600 : FontWeight.w700,
+                          ),
                         ),
                         const SizedBox(height: 6),
                         NotificationCategoryChip(label: notification.category),
@@ -155,11 +187,30 @@ class _NotificationCard extends StatelessWidget {
                           notification.body,
                           maxLines: 2,
                           overflow: TextOverflow.ellipsis,
-                          style: Theme.of(context).textTheme.bodyMedium,
+                          style: isRead
+                              ? textTheme.bodyMedium
+                                  ?.copyWith(color: Colors.grey.shade600)
+                              : textTheme.bodyMedium,
                         ),
                       ],
                     ),
                   ),
+                  const SizedBox(width: 8),
+                  if (!isRead)
+                    Container(
+                      width: 14,
+                      height: 14,
+                      decoration: BoxDecoration(
+                        color: Colors.redAccent,
+                        shape: BoxShape.circle,
+                        border: Border.all(
+                          color: colorScheme.surface,
+                          width: 2,
+                        ),
+                      ),
+                    )
+                  else
+                    const SizedBox(width: 14),
                 ],
               ),
               const SizedBox(height: 12),
