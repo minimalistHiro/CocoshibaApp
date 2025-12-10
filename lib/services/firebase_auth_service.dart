@@ -158,6 +158,45 @@ class FirebaseAuthService {
         .set(updateData, SetOptions(merge: true));
   }
 
+  Future<void> updateLoginInfo({
+    required String email,
+    required String currentPassword,
+    String? newPassword,
+  }) async {
+    final user = _auth.currentUser;
+    if (user == null) {
+      throw FirebaseAuthException(
+        code: 'no-current-user',
+        message: 'ログインしていません',
+      );
+    }
+
+    final trimmedEmail = email.trim();
+    final trimmedNewPassword = newPassword?.trim();
+    final credential = EmailAuthProvider.credential(
+      email: user.email ?? trimmedEmail,
+      password: currentPassword,
+    );
+
+    await user.reauthenticateWithCredential(credential);
+
+    if (trimmedEmail.isNotEmpty && trimmedEmail != user.email) {
+      await user.updateEmail(trimmedEmail);
+    }
+
+    if (trimmedNewPassword != null && trimmedNewPassword.isNotEmpty) {
+      await user.updatePassword(trimmedNewPassword);
+    }
+
+    await _firestore.collection('users').doc(user.uid).set(
+      {
+        'email': trimmedEmail,
+        'updatedAt': FieldValue.serverTimestamp(),
+      },
+      SetOptions(merge: true),
+    );
+  }
+
   Future<void> deleteAccount() async {
     final user = _auth.currentUser;
     if (user == null) {

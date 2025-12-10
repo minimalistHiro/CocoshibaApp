@@ -2,8 +2,12 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
 import '../services/firebase_auth_service.dart';
+import 'data_privacy_page.dart';
 import 'existing_events_page.dart';
+import 'login_info_update_page.dart';
+import 'notification_settings_page.dart';
 import 'profile_edit_page.dart';
+import 'support_help_page.dart';
 
 class AccountPage extends StatefulWidget {
   const AccountPage({super.key});
@@ -257,23 +261,24 @@ class _AccountPageState extends State<AccountPage> {
               icon: Icons.lock_outline,
               title: 'ログイン情報変更',
               subtitle: 'メールアドレスやパスワードを更新',
-              onTap: () => _showFeatureUnavailable(context, 'ログイン情報変更'),
+              onTap: () => Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (_) => const LoginInfoUpdatePage(),
+                ),
+              ),
             ),
             const SizedBox(height: 16),
             _buildSectionHeader('セキュリティと通知'),
             _buildSettingCard(
               context: context,
-              icon: Icons.security,
-              title: 'セキュリティ設定',
-              subtitle: '二段階認証・ログイン履歴の確認',
-              onTap: () => _showFeatureUnavailable(context, 'セキュリティ設定'),
-            ),
-            _buildSettingCard(
-              context: context,
               icon: Icons.notifications_outlined,
               title: '通知設定',
               subtitle: 'プッシュ・メール通知の受信を管理',
-              onTap: () => _showFeatureUnavailable(context, '通知設定'),
+              onTap: () => Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (_) => const NotificationSettingsPage(),
+                ),
+              ),
             ),
             const SizedBox(height: 16),
             _buildSectionHeader('データとサポート'),
@@ -282,7 +287,11 @@ class _AccountPageState extends State<AccountPage> {
               icon: Icons.privacy_tip_outlined,
               title: 'データとプライバシー',
               subtitle: 'データの確認・エクスポート・削除',
-              onTap: () => _showFeatureUnavailable(context, 'データとプライバシー'),
+              onTap: () => Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (_) => const DataPrivacyPage(),
+                ),
+              ),
             ),
             _buildSettingCard(
               context: context,
@@ -296,7 +305,11 @@ class _AccountPageState extends State<AccountPage> {
               icon: Icons.help_outline,
               title: 'サポート・ヘルプ',
               subtitle: 'お問い合わせ・FAQ・ポリシー',
-              onTap: () => _showFeatureUnavailable(context, 'サポート・ヘルプ'),
+              onTap: () => Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (_) => const SupportHelpPage(),
+                ),
+              ),
             ),
             const SizedBox(height: 16),
             _buildSectionHeader('管理者設定'),
