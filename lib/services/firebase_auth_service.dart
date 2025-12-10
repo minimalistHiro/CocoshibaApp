@@ -108,6 +108,47 @@ class FirebaseAuthService {
 
   Future<void> signOut() => _auth.signOut();
 
+  Future<void> updateProfile({
+    required String name,
+    String? bio,
+    Uint8List? profileImageBytes,
+  }) async {
+    final user = _auth.currentUser;
+    if (user == null) {
+      throw FirebaseAuthException(
+        code: 'no-current-user',
+        message: 'ログインしていません',
+      );
+    }
+
+    final trimmedName = name.trim();
+    final trimmedBio = bio?.trim();
+
+    await user.updateDisplayName(trimmedName);
+
+    final Map<String, dynamic> updateData = {
+      'name': trimmedName,
+      'updatedAt': FieldValue.serverTimestamp(),
+    };
+
+    if (trimmedBio != null && trimmedBio.isNotEmpty) {
+      updateData['bio'] = trimmedBio;
+    } else {
+      updateData['bio'] = FieldValue.delete();
+    }
+
+    if (profileImageBytes != null) {
+      final photoUrl = await _uploadProfileImage(user.uid, profileImageBytes);
+      await user.updatePhotoURL(photoUrl);
+      updateData['photoUrl'] = photoUrl;
+    }
+
+    await _firestore
+        .collection('users')
+        .doc(user.uid)
+        .set(updateData, SetOptions(merge: true));
+  }
+
   Future<void> deleteAccount() async {
     final user = _auth.currentUser;
     if (user == null) {
