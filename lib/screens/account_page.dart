@@ -2,6 +2,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
 import '../services/firebase_auth_service.dart';
+import 'existing_events_page.dart';
 import 'profile_edit_page.dart';
 
 class AccountPage extends StatefulWidget {
@@ -296,6 +297,19 @@ class _AccountPageState extends State<AccountPage> {
               title: 'サポート・ヘルプ',
               subtitle: 'お問い合わせ・FAQ・ポリシー',
               onTap: () => _showFeatureUnavailable(context, 'サポート・ヘルプ'),
+            ),
+            const SizedBox(height: 16),
+            _buildSectionHeader('管理者設定'),
+            _buildSettingCard(
+              context: context,
+              icon: Icons.edit_calendar_outlined,
+              title: '既存イベント編集',
+              subtitle: '公開済みイベントの内容を変更',
+              onTap: () => Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (_) => const ExistingEventsPage(),
+                ),
+              ),
             ),
             const SizedBox(height: 32),
             FilledButton.icon(
