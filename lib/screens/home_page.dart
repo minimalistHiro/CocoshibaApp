@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../services/firebase_auth_service.dart';
 import '../widgets/point_card.dart';
+import 'notification_page.dart';
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
@@ -21,8 +22,10 @@ class _HomePageState extends State<HomePage> {
   }
 
   void _showNotification(BuildContext context) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('お知らせは準備中です')),
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => const NotificationPage(),
+      ),
     );
   }
 
