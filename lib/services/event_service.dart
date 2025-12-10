@@ -18,6 +18,8 @@ class EventService {
 
   CollectionReference<Map<String, dynamic>> get _eventsRef =>
       _firestore.collection('events');
+  CollectionReference<Map<String, dynamic>> _reservationsRef(String eventId) =>
+      _eventsRef.doc(eventId).collection('reservations');
 
   Future<void> createEvent({
     required String name,
@@ -27,15 +29,15 @@ class EventService {
     required String content,
     required List<XFile> images,
     required int colorValue,
+    required int capacity,
   }) async {
     final docRef = _eventsRef.doc();
     final List<String> imageUrls = [];
 
     for (final image in images) {
       final Uint8List bytes = await image.readAsBytes();
-      final storageRef = _storage
-          .ref()
-          .child('event_images/${docRef.id}/${DateTime.now().millisecondsSinceEpoch}.jpg');
+      final storageRef = _storage.ref().child(
+          'event_images/${docRef.id}/${DateTime.now().millisecondsSinceEpoch}.jpg');
       final uploadTask = await storageRef.putData(
         bytes,
         SettableMetadata(contentType: 'image/jpeg'),
@@ -52,7 +54,30 @@ class EventService {
       'content': content,
       'imageUrls': imageUrls,
       'colorValue': colorValue,
+      'capacity': capacity,
       'createdAt': FieldValue.serverTimestamp(),
+    });
+  }
+
+  Future<void> updateEvent({
+    required String eventId,
+    required String name,
+    required String organizer,
+    required DateTime startDateTime,
+    required DateTime endDateTime,
+    required String content,
+    required int colorValue,
+    required int capacity,
+  }) async {
+    await _eventsRef.doc(eventId).update({
+      'name': name,
+      'organizer': organizer,
+      'startDateTime': Timestamp.fromDate(startDateTime),
+      'endDateTime': Timestamp.fromDate(endDateTime),
+      'content': content,
+      'colorValue': colorValue,
+      'capacity': capacity,
+      'updatedAt': FieldValue.serverTimestamp(),
     });
   }
 
@@ -93,9 +118,44 @@ class EventService {
         .orderBy('startDateTime')
         .snapshots()
         .map(
-      (snapshot) => snapshot.docs
-          .map(CalendarEvent.fromDocument)
-          .toList(growable: false),
-    );
+          (snapshot) => snapshot.docs
+              .map(CalendarEvent.fromDocument)
+              .toList(growable: false),
+        );
+  }
+
+  Future<bool> hasReservation({
+    required String eventId,
+    required String userId,
+  }) async {
+    final doc = await _reservationsRef(eventId).doc(userId).get();
+    return doc.exists;
+  }
+
+  Future<void> reserveEvent({
+    required CalendarEvent event,
+    required String userId,
+  }) async {
+    await _reservationsRef(event.id).doc(userId).set({
+      'userId': userId,
+      'eventId': event.id,
+      'eventName': event.name,
+      'eventStartDateTime': Timestamp.fromDate(event.startDateTime),
+      'eventEndDateTime': Timestamp.fromDate(event.endDateTime),
+      'reservedAt': FieldValue.serverTimestamp(),
+    });
+  }
+
+  Future<void> cancelReservation({
+    required String eventId,
+    required String userId,
+  }) async {
+    await _reservationsRef(eventId).doc(userId).delete();
+  }
+
+  Stream<int> watchReservationCount(String eventId) {
+    return _reservationsRef(eventId)
+        .snapshots()
+        .map((snapshot) => snapshot.size);
   }
 }

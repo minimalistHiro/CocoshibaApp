@@ -1,18 +1,18 @@
-import 'dart:io';
-
 import 'package:flutter/material.dart';
-import 'package:image_picker/image_picker.dart';
 
+import '../models/calendar_event.dart';
 import '../services/event_service.dart';
 
-class CreateEventPage extends StatefulWidget {
-  const CreateEventPage({super.key});
+class EditEventPage extends StatefulWidget {
+  const EditEventPage({super.key, required this.event});
+
+  final CalendarEvent event;
 
   @override
-  State<CreateEventPage> createState() => _CreateEventPageState();
+  State<EditEventPage> createState() => _EditEventPageState();
 }
 
-class _CreateEventPageState extends State<CreateEventPage> {
+class _EditEventPageState extends State<EditEventPage> {
   static const List<Color> _colorPalette = [
     Color(0xFFEF5350),
     Color(0xFFF06292),
@@ -27,6 +27,9 @@ class _CreateEventPageState extends State<CreateEventPage> {
     Color(0xFFFF7043),
     Color(0xFF8D6E63),
   ];
+  static final List<int> _capacityOptions =
+      List<int>.generate(30, (index) => index + 1);
+
   final _formKey = GlobalKey<FormState>();
   final _nameController = TextEditingController();
   final _organizerController = TextEditingController();
@@ -34,18 +37,54 @@ class _CreateEventPageState extends State<CreateEventPage> {
   final _startTimeController = TextEditingController();
   final _endTimeController = TextEditingController();
   final _contentController = TextEditingController();
-  static final List<int> _capacityOptions =
-      List<int>.generate(30, (index) => index + 1);
 
   final EventService _eventService = EventService();
-  final ImagePicker _picker = ImagePicker();
   DateTime? _selectedDate;
   TimeOfDay? _startTime;
   TimeOfDay? _endTime;
-  final List<XFile> _images = [];
+  late int _selectedColorIndex;
+  late int _selectedCapacity;
   bool _isSubmitting = false;
-  int _selectedColorIndex = 5;
-  int _selectedCapacity = 10;
+
+  @override
+  void initState() {
+    super.initState();
+    _initializeForm();
+  }
+
+  void _initializeForm() {
+    final event = widget.event;
+    _nameController.text = event.name;
+    _organizerController.text = event.organizer;
+    _contentController.text = event.content;
+
+    _selectedDate = DateTime(
+      event.startDateTime.year,
+      event.startDateTime.month,
+      event.startDateTime.day,
+    );
+    _dateController.text = _formatDateLabel(_selectedDate!);
+
+    _startTime = TimeOfDay.fromDateTime(event.startDateTime);
+    _startTimeController.text = _formatTimeLabel(_startTime!);
+
+    _endTime = TimeOfDay.fromDateTime(event.endDateTime);
+    _endTimeController.text = _formatTimeLabel(_endTime!);
+
+    _selectedCapacity = event.capacity > 0 ? event.capacity : 1;
+    final colorIndex = _colorPalette.indexWhere(
+      (color) => color.value == event.colorValue,
+    );
+    _selectedColorIndex = colorIndex >= 0 ? colorIndex : 0;
+  }
+
+  String _formatDateLabel(DateTime date) {
+    return '${date.year}/${date.month.toString().padLeft(2, '0')}/${date.day.toString().padLeft(2, '0')}';
+  }
+
+  String _formatTimeLabel(TimeOfDay time) {
+    return '${time.hour.toString().padLeft(2, '0')}:${time.minute.toString().padLeft(2, '0')}';
+  }
 
   @override
   void dispose() {
@@ -59,7 +98,7 @@ class _CreateEventPageState extends State<CreateEventPage> {
   }
 
   Future<void> _pickDate() async {
-    final initialDate = _selectedDate ?? DateTime.now();
+    final initialDate = _selectedDate ?? widget.event.startDateTime;
     final picked = await showDatePicker(
       context: context,
       initialDate: initialDate,
@@ -69,8 +108,7 @@ class _CreateEventPageState extends State<CreateEventPage> {
     if (picked != null) {
       setState(() {
         _selectedDate = picked;
-        _dateController.text =
-            '${picked.year}/${picked.month.toString().padLeft(2, '0')}/${picked.day.toString().padLeft(2, '0')}';
+        _dateController.text = _formatDateLabel(picked);
       });
     }
   }
@@ -84,15 +122,12 @@ class _CreateEventPageState extends State<CreateEventPage> {
     if (picked != null) {
       setState(() {
         _startTime = picked;
-        final hour = picked.hour.toString().padLeft(2, '0');
-        final minute = picked.minute.toString().padLeft(2, '0');
-        _startTimeController.text = '$hour:$minute';
+        _startTimeController.text = _formatTimeLabel(picked);
         if (_endTime == null || _compareTimes(_endTime!, picked) <= 0) {
           final endInitial =
               TimeOfDay(hour: (picked.hour + 1) % 24, minute: picked.minute);
           _endTime = endInitial;
-          _endTimeController.text =
-              '${endInitial.hour.toString().padLeft(2, '0')}:${endInitial.minute.toString().padLeft(2, '0')}';
+          _endTimeController.text = _formatTimeLabel(endInitial);
         }
       });
     }
@@ -107,9 +142,7 @@ class _CreateEventPageState extends State<CreateEventPage> {
     if (picked != null) {
       setState(() {
         _endTime = picked;
-        final hour = picked.hour.toString().padLeft(2, '0');
-        final minute = picked.minute.toString().padLeft(2, '0');
-        _endTimeController.text = '$hour:$minute';
+        _endTimeController.text = _formatTimeLabel(picked);
       });
     }
   }
@@ -117,27 +150,6 @@ class _CreateEventPageState extends State<CreateEventPage> {
   int _compareTimes(TimeOfDay a, TimeOfDay b) {
     if (a.hour != b.hour) return a.hour - b.hour;
     return a.minute - b.minute;
-  }
-
-  Future<void> _pickImages() async {
-    final remaining = 5 - _images.length;
-    if (remaining <= 0) return;
-
-    final pickedFiles = await _picker.pickMultiImage(
-      maxHeight: 1080,
-      maxWidth: 1080,
-      imageQuality: 85,
-    );
-    if (pickedFiles == null || pickedFiles.isEmpty) return;
-    setState(() {
-      _images.addAll(pickedFiles.take(remaining));
-    });
-  }
-
-  void _removeImage(XFile image) {
-    setState(() {
-      _images.remove(image);
-    });
   }
 
   Future<void> _submit() async {
@@ -171,25 +183,38 @@ class _CreateEventPageState extends State<CreateEventPage> {
 
     setState(() => _isSubmitting = true);
     try {
-      await _eventService.createEvent(
+      await _eventService.updateEvent(
+        eventId: widget.event.id,
         name: _nameController.text.trim(),
         organizer: _organizerController.text.trim(),
         startDateTime: startDateTime,
         endDateTime: endDateTime,
         content: _contentController.text.trim(),
-        images: _images,
         colorValue: _colorPalette[_selectedColorIndex].value,
         capacity: _selectedCapacity,
       );
+
+      final updatedEvent = CalendarEvent(
+        id: widget.event.id,
+        name: _nameController.text.trim(),
+        organizer: _organizerController.text.trim(),
+        startDateTime: startDateTime,
+        endDateTime: endDateTime,
+        content: _contentController.text.trim(),
+        imageUrls: widget.event.imageUrls,
+        colorValue: _colorPalette[_selectedColorIndex].value,
+        capacity: _selectedCapacity,
+      );
+
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('イベントを作成しました')),
+        const SnackBar(content: Text('イベントを更新しました')),
       );
-      Navigator.of(context).pop();
+      Navigator.of(context).pop(updatedEvent);
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('イベント作成に失敗しました: $e')),
+        SnackBar(content: Text('更新に失敗しました: $e')),
       );
     } finally {
       if (mounted) {
@@ -202,7 +227,7 @@ class _CreateEventPageState extends State<CreateEventPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('イベント作成'),
+        title: const Text('イベント編集'),
       ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(24),
@@ -308,12 +333,6 @@ class _CreateEventPageState extends State<CreateEventPage> {
                 },
               ),
               const SizedBox(height: 24),
-              _ImagePickerGrid(
-                images: _images,
-                onAdd: () => _pickImages(),
-                onRemove: _removeImage,
-              ),
-              const SizedBox(height: 24),
               FilledButton(
                 onPressed: _isSubmitting ? null : _submit,
                 child: _isSubmitting
@@ -322,105 +341,12 @@ class _CreateEventPageState extends State<CreateEventPage> {
                         height: 20,
                         child: CircularProgressIndicator(strokeWidth: 2),
                       )
-                    : const Text('作成する'),
+                    : const Text('更新する'),
               ),
             ],
           ),
         ),
       ),
-    );
-  }
-}
-
-class _ImagePickerGrid extends StatelessWidget {
-  const _ImagePickerGrid({
-    required this.images,
-    required this.onAdd,
-    required this.onRemove,
-  });
-
-  final List<XFile> images;
-  final VoidCallback onAdd;
-  final void Function(XFile image) onRemove;
-
-  @override
-  Widget build(BuildContext context) {
-    final canAddMore = images.length < 5;
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          children: [
-            Text(
-              'イベント画像（最大5枚、1:1 推奨）',
-              style: Theme.of(context).textTheme.titleSmall,
-            ),
-            const SizedBox(width: 8),
-            Text(
-              '${images.length}/5',
-              style: Theme.of(context).textTheme.bodySmall,
-            ),
-          ],
-        ),
-        const SizedBox(height: 12),
-        Wrap(
-          spacing: 12,
-          runSpacing: 12,
-          children: [
-            for (final image in images)
-              Stack(
-                children: [
-                  ClipRRect(
-                    borderRadius: BorderRadius.circular(12),
-                    child: AspectRatio(
-                      aspectRatio: 1,
-                      child: Image.file(
-                        File(image.path),
-                        fit: BoxFit.cover,
-                        width: 110,
-                        height: 110,
-                      ),
-                    ),
-                  ),
-                  Positioned(
-                    top: 4,
-                    right: 4,
-                    child: GestureDetector(
-                      onTap: () => onRemove(image),
-                      child: Container(
-                        decoration: const BoxDecoration(
-                          color: Colors.black54,
-                          shape: BoxShape.circle,
-                        ),
-                        padding: const EdgeInsets.all(4),
-                        child: const Icon(
-                          Icons.close,
-                          size: 16,
-                          color: Colors.white,
-                        ),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            if (canAddMore)
-              GestureDetector(
-                onTap: onAdd,
-                child: Container(
-                  width: 110,
-                  height: 110,
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: Colors.grey.shade400),
-                  ),
-                  child: const Center(
-                    child: Icon(Icons.add_a_photo),
-                  ),
-                ),
-              ),
-          ],
-        ),
-      ],
     );
   }
 }

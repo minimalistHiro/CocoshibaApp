@@ -12,6 +12,7 @@ class CalendarEvent {
     required this.content,
     required this.imageUrls,
     required this.colorValue,
+    required this.capacity,
   });
 
   final String id;
@@ -22,6 +23,7 @@ class CalendarEvent {
   final String content;
   final List<String> imageUrls;
   final int colorValue;
+  final int capacity;
 
   Color get color => Color(colorValue);
 
@@ -47,6 +49,7 @@ class CalendarEvent {
               .toList() ??
           const [],
       colorValue: (data['colorValue'] as int?) ?? Colors.blue.value,
+      capacity: (data['capacity'] as int?) ?? 0,
     );
   }
 
@@ -59,6 +62,7 @@ class CalendarEvent {
       'content': content,
       'imageUrls': imageUrls,
       'colorValue': colorValue,
+      'capacity': capacity,
     };
   }
 }
