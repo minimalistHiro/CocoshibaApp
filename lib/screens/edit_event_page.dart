@@ -217,6 +217,7 @@ class _EditEventPageState extends State<EditEventPage> {
         imageUrls: widget.event.imageUrls,
         colorValue: _colorPalette[_selectedColorIndex].value,
         capacity: _selectedCapacity,
+        isClosedDay: widget.event.isClosedDay,
       );
 
       if (!mounted) return;

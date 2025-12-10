@@ -67,12 +67,20 @@ class _EventDetailPageState extends State<EventDetailPage> {
         final imageHeight = MediaQuery.of(context).size.width;
         final reservationCount = snapshot.data ?? 0;
         final isEventFull = _isEventFull(reservationCount);
+        final bool isEventEnded = DateTime.now().isAfter(event.endDateTime);
         final reservationCountLabel =
             snapshot.hasData ? '$reservationCount人' : '取得中...';
         final isReservationBusy =
             _isReservationLoading || _isReservationProcessing;
-        final bool isReservationButtonDisabled =
-            !_hasReservation && isEventFull;
+        final bool isReservationButtonDisabled = isEventEnded ||
+            (!_hasReservation && isEventFull);
+        final String reservationButtonLabel = isEventEnded
+            ? 'イベントは終了しました'
+            : _hasReservation
+                ? '予約を解除する'
+                : isEventFull
+                    ? '定員に達しました'
+                    : '予約する';
 
         return Scaffold(
           appBar: AppBar(
@@ -233,23 +241,17 @@ class _EventDetailPageState extends State<EventDetailPage> {
                               (isReservationButtonDisabled || isReservationBusy)
                                   ? null
                                   : _onReservationButtonPressed,
-                          child:
-                              isReservationBusy && !isReservationButtonDisabled
-                                  ? const SizedBox(
-                                      width: 20,
-                                      height: 20,
-                                      child: CircularProgressIndicator(
-                                        color: Colors.white,
-                                        strokeWidth: 2,
-                                      ),
-                                    )
-                                  : Text(
-                                      _hasReservation
-                                          ? '予約を解除する'
-                                          : isEventFull
-                                              ? '定員に達しました'
-                                              : '予約する',
-                                    ),
+                          child: isReservationBusy &&
+                                  !isReservationButtonDisabled
+                              ? const SizedBox(
+                                  width: 20,
+                                  height: 20,
+                                  child: CircularProgressIndicator(
+                                    color: Colors.white,
+                                    strokeWidth: 2,
+                                  ),
+                                )
+                              : Text(reservationButtonLabel),
                         ),
                       ),
                       const SizedBox(height: 12),

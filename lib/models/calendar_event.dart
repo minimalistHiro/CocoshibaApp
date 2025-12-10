@@ -13,6 +13,7 @@ class CalendarEvent {
     required this.imageUrls,
     required this.colorValue,
     required this.capacity,
+    required this.isClosedDay,
   });
 
   final String id;
@@ -24,6 +25,7 @@ class CalendarEvent {
   final List<String> imageUrls;
   final int colorValue;
   final int capacity;
+  final bool isClosedDay;
 
   Color get color => Color(colorValue);
 
@@ -50,6 +52,7 @@ class CalendarEvent {
           const [],
       colorValue: (data['colorValue'] as int?) ?? Colors.blue.value,
       capacity: (data['capacity'] as int?) ?? 0,
+      isClosedDay: data['isClosedDay'] == true,
     );
   }
 
@@ -63,6 +66,7 @@ class CalendarEvent {
       'imageUrls': imageUrls,
       'colorValue': colorValue,
       'capacity': capacity,
+      'isClosedDay': isClosedDay,
     };
   }
 }

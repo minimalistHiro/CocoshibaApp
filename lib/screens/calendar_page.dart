@@ -80,6 +80,12 @@ class _CalendarPageState extends State<CalendarPage> {
   }
 
   void _openEventDetail(CalendarEvent event) {
+    if (event.isClosedDay) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('定休日のため詳細はありません')),
+      );
+      return;
+    }
     Navigator.of(context).push(
       MaterialPageRoute(builder: (_) => EventDetailPage(event: event)),
     );
@@ -499,7 +505,7 @@ class _EventList extends StatelessWidget {
             children: events
                 .map(
                   (event) => GestureDetector(
-                    onTap: () => onTap(event),
+                    onTap: event.isClosedDay ? null : () => onTap(event),
                     child: Container(
                       width: double.infinity,
                       margin: const EdgeInsets.only(bottom: 8),
