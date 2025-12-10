@@ -6,6 +6,8 @@ import 'data_privacy_page.dart';
 import 'existing_events_page.dart';
 import 'login_info_update_page.dart';
 import 'notification_settings_page.dart';
+import 'closed_days_settings_page.dart';
+import 'owner_settings_page.dart';
 import 'profile_edit_page.dart';
 import 'support_help_page.dart';
 
@@ -124,19 +126,37 @@ class _AccountPageState extends State<AccountPage> {
 
   Widget _buildProfileAvatar(String? photoUrl, String fallbackInitial) {
     final hasPhoto = photoUrl != null && photoUrl.isNotEmpty;
+    final theme = Theme.of(context);
+    final fallbackChild = Text(
+      fallbackInitial,
+      style: const TextStyle(
+        color: Colors.white,
+        fontSize: 24,
+      ),
+    );
+
     return CircleAvatar(
       radius: 32,
-      backgroundColor: Theme.of(context).colorScheme.primary,
-      backgroundImage: hasPhoto ? NetworkImage(photoUrl!) : null,
+      backgroundColor: theme.colorScheme.primary,
       child: hasPhoto
-          ? null
-          : Text(
-              fallbackInitial,
-              style: const TextStyle(
-                color: Colors.white,
-                fontSize: 24,
+          ? ClipOval(
+              child: Image.network(
+                photoUrl!,
+                width: 64,
+                height: 64,
+                fit: BoxFit.cover,
+                errorBuilder: (_, __, ___) => fallbackChild,
+                loadingBuilder: (context, child, loadingProgress) {
+                  if (loadingProgress == null) return child;
+                  return const SizedBox(
+                    width: 24,
+                    height: 24,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  );
+                },
               ),
-            ),
+            )
+          : fallbackChild,
     );
   }
 
@@ -313,6 +333,28 @@ class _AccountPageState extends State<AccountPage> {
             ),
             const SizedBox(height: 16),
             _buildSectionHeader('管理者設定'),
+            _buildSettingCard(
+              context: context,
+              icon: Icons.event_busy_outlined,
+              title: '定休日設定',
+              subtitle: '休業日をカレンダーで管理',
+              onTap: () => Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (_) => const ClosedDaysSettingsPage(),
+                ),
+              ),
+            ),
+            _buildSettingCard(
+              context: context,
+              icon: Icons.admin_panel_settings_outlined,
+              title: 'オーナー設定',
+              subtitle: 'ポイント還元率の管理',
+              onTap: () => Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (_) => const OwnerSettingsPage(),
+                ),
+              ),
+            ),
             _buildSettingCard(
               context: context,
               icon: Icons.edit_calendar_outlined,
