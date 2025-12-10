@@ -84,6 +84,12 @@ class _HomePageState extends State<HomePage> {
     }
   }
 
+  void _showShortcutMessage(String label) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('$label は準備中です')),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return SafeArea(
@@ -124,20 +130,47 @@ class _HomePageState extends State<HomePage> {
             },
           ),
           const SizedBox(height: 32),
-          Text(
-            'ショートカット',
-            style: Theme.of(context).textTheme.titleMedium,
-          ),
-          const SizedBox(height: 12),
-          const Wrap(
-            spacing: 12,
-            runSpacing: 12,
-            children: [
-              _MenuButton(icon: Icons.qr_code, label: 'QR コード'),
-              _MenuButton(icon: Icons.send, label: '送る'),
-              _MenuButton(icon: Icons.leaderboard_outlined, label: 'ランキング'),
-              _MenuButton(icon: Icons.storefront_outlined, label: '本日の獲得'),
-            ],
+          Material(
+            color: Theme.of(context).colorScheme.primary,
+            elevation: 4,
+            shadowColor: Theme.of(context).colorScheme.primary.withOpacity(0.4),
+            borderRadius: BorderRadius.circular(36),
+            clipBehavior: Clip.antiAlias,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: _ShortcutItem(
+                      icon: Icons.qr_code,
+                      label: 'QRコード',
+                      onTap: () => _showShortcutMessage('QRコード'),
+                    ),
+                  ),
+                  Expanded(
+                    child: _ShortcutItem(
+                      icon: Icons.send,
+                      label: '送る',
+                      onTap: () => _showShortcutMessage('送る'),
+                    ),
+                  ),
+                  Expanded(
+                    child: _ShortcutItem(
+                      icon: Icons.leaderboard_outlined,
+                      label: 'ランキング',
+                      onTap: () => _showShortcutMessage('ランキング'),
+                    ),
+                  ),
+                  Expanded(
+                    child: _ShortcutItem(
+                      icon: Icons.storefront_outlined,
+                      label: '本日の獲得',
+                      onTap: () => _showShortcutMessage('本日の獲得'),
+                    ),
+                  ),
+                ],
+              ),
+            ),
           ),
         ],
       ),
@@ -145,29 +178,43 @@ class _HomePageState extends State<HomePage> {
   }
 }
 
-class _MenuButton extends StatelessWidget {
-  const _MenuButton({required this.icon, required this.label});
+class _ShortcutItem extends StatelessWidget {
+  const _ShortcutItem({
+    required this.icon,
+    required this.label,
+    required this.onTap,
+  });
 
   final IconData icon;
   final String label;
+  final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
-    return SizedBox(
-      width: (MediaQuery.of(context).size.width - 72) / 2,
-      child: FilledButton.tonal(
-        onPressed: () {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('$label は準備中です')),
-          );
-        },
-        style: FilledButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 16)),
-        child: Column(
-          children: [
-            Icon(icon, size: 28),
-            const SizedBox(height: 8),
-            Text(label),
-          ],
+    final textStyle = Theme.of(context).textTheme.bodySmall?.copyWith(
+          color: Colors.white,
+          fontWeight: FontWeight.w600,
+        );
+
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(24),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(icon, color: Colors.white, size: 28),
+              const SizedBox(height: 6),
+              Text(
+                label,
+                style: textStyle,
+                textAlign: TextAlign.center,
+              ),
+            ],
+          ),
         ),
       ),
     );
