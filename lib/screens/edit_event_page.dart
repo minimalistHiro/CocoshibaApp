@@ -1,4 +1,7 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
 
 import '../models/calendar_event.dart';
 import '../services/event_service.dart';
@@ -38,12 +41,16 @@ class _EditEventPageState extends State<EditEventPage> {
   final _endTimeController = TextEditingController();
   final _contentController = TextEditingController();
 
+  final ImagePicker _picker = ImagePicker();
   final EventService _eventService = EventService();
   DateTime? _selectedDate;
   TimeOfDay? _startTime;
   TimeOfDay? _endTime;
   late int _selectedColorIndex;
   late int _selectedCapacity;
+  late List<String> _existingImageUrls;
+  final List<String> _removedImageUrls = [];
+  final List<XFile> _newImages = [];
   bool _isSubmitting = false;
 
   TimeOfDay _roundToFiveMinutes(TimeOfDay time) {
@@ -64,6 +71,7 @@ class _EditEventPageState extends State<EditEventPage> {
     _nameController.text = event.name;
     _organizerController.text = event.organizer;
     _contentController.text = event.content;
+    _existingImageUrls = List<String>.from(event.imageUrls);
 
     _selectedDate = DateTime(
       event.startDateTime.year,
@@ -165,6 +173,34 @@ class _EditEventPageState extends State<EditEventPage> {
     return a.minute - b.minute;
   }
 
+  Future<void> _pickImages() async {
+    final remaining = 5 - _existingImageUrls.length - _newImages.length;
+    if (remaining <= 0) return;
+
+    final pickedFiles = await _picker.pickMultiImage(
+      maxHeight: 1080,
+      maxWidth: 1080,
+      imageQuality: 85,
+    );
+    if (pickedFiles == null || pickedFiles.isEmpty) return;
+    setState(() {
+      _newImages.addAll(pickedFiles.take(remaining));
+    });
+  }
+
+  void _removeExistingImage(String url) {
+    setState(() {
+      _existingImageUrls.remove(url);
+      _removedImageUrls.add(url);
+    });
+  }
+
+  void _removeNewImage(XFile image) {
+    setState(() {
+      _newImages.remove(image);
+    });
+  }
+
   Future<void> _submit() async {
     if (!_formKey.currentState!.validate()) return;
     final date = _selectedDate;
@@ -196,7 +232,7 @@ class _EditEventPageState extends State<EditEventPage> {
 
     setState(() => _isSubmitting = true);
     try {
-      await _eventService.updateEvent(
+      final updatedImageUrls = await _eventService.updateEvent(
         eventId: widget.event.id,
         name: _nameController.text.trim(),
         organizer: _organizerController.text.trim(),
@@ -205,6 +241,9 @@ class _EditEventPageState extends State<EditEventPage> {
         content: _contentController.text.trim(),
         colorValue: _colorPalette[_selectedColorIndex].value,
         capacity: _selectedCapacity,
+        remainingImageUrls: _existingImageUrls,
+        newImages: _newImages,
+        removedImageUrls: _removedImageUrls,
       );
 
       final updatedEvent = CalendarEvent(
@@ -214,7 +253,7 @@ class _EditEventPageState extends State<EditEventPage> {
         startDateTime: startDateTime,
         endDateTime: endDateTime,
         content: _contentController.text.trim(),
-        imageUrls: widget.event.imageUrls,
+        imageUrls: updatedImageUrls,
         colorValue: _colorPalette[_selectedColorIndex].value,
         capacity: _selectedCapacity,
         isClosedDay: widget.event.isClosedDay,
@@ -239,6 +278,8 @@ class _EditEventPageState extends State<EditEventPage> {
 
   @override
   Widget build(BuildContext context) {
+    final totalImages = _existingImageUrls.length + _newImages.length;
+    final canAddMore = totalImages < 5 && !_isSubmitting;
     return Scaffold(
       appBar: AppBar(
         title: const Text('イベント編集'),
@@ -345,6 +386,108 @@ class _EditEventPageState extends State<EditEventPage> {
                 onSelect: (index) {
                   setState(() => _selectedColorIndex = index);
                 },
+              ),
+              const SizedBox(height: 24),
+              Row(
+                children: [
+                  Text(
+                    'イベント画像（最大5枚、1:1 推奨）',
+                    style: Theme.of(context)
+                        .textTheme
+                        .titleSmall
+                        ?.copyWith(fontWeight: FontWeight.bold),
+                  ),
+                  const SizedBox(width: 8),
+                  Text('$totalImages/5'),
+                ],
+              ),
+              const SizedBox(height: 12),
+              Wrap(
+                spacing: 12,
+                runSpacing: 12,
+                children: [
+                  for (final url in _existingImageUrls)
+                    Stack(
+                      children: [
+                        ClipRRect(
+                          borderRadius: BorderRadius.circular(12),
+                          child: Image.network(
+                            url,
+                            width: 100,
+                            height: 100,
+                            fit: BoxFit.cover,
+                          ),
+                        ),
+                        if (!_isSubmitting)
+                          Positioned(
+                            top: 4,
+                            right: 4,
+                            child: GestureDetector(
+                              onTap: () => _removeExistingImage(url),
+                              child: Container(
+                                decoration: const BoxDecoration(
+                                  color: Colors.black54,
+                                  shape: BoxShape.circle,
+                                ),
+                                padding: const EdgeInsets.all(4),
+                                child: const Icon(
+                                  Icons.close,
+                                  size: 16,
+                                  color: Colors.white,
+                                ),
+                              ),
+                            ),
+                          ),
+                      ],
+                    ),
+                  for (final file in _newImages)
+                    Stack(
+                      children: [
+                        ClipRRect(
+                          borderRadius: BorderRadius.circular(12),
+                          child: Image.file(
+                            File(file.path),
+                            width: 100,
+                            height: 100,
+                            fit: BoxFit.cover,
+                          ),
+                        ),
+                        if (!_isSubmitting)
+                          Positioned(
+                            top: 4,
+                            right: 4,
+                            child: GestureDetector(
+                              onTap: () => _removeNewImage(file),
+                              child: Container(
+                                decoration: const BoxDecoration(
+                                  color: Colors.black54,
+                                  shape: BoxShape.circle,
+                                ),
+                                padding: const EdgeInsets.all(4),
+                                child: const Icon(
+                                  Icons.close,
+                                  size: 16,
+                                  color: Colors.white,
+                                ),
+                              ),
+                            ),
+                          ),
+                      ],
+                    ),
+                  if (canAddMore)
+                    GestureDetector(
+                      onTap: _isSubmitting ? null : _pickImages,
+                      child: Container(
+                        width: 100,
+                        height: 100,
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: Colors.grey.shade400),
+                        ),
+                        child: const Icon(Icons.add_a_photo),
+                      ),
+                    ),
+                ],
               ),
               const SizedBox(height: 24),
               FilledButton(

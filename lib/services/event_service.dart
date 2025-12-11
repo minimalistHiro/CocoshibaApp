@@ -59,7 +59,7 @@ class EventService {
     });
   }
 
-  Future<void> updateEvent({
+  Future<List<String>> updateEvent({
     required String eventId,
     required String name,
     required String organizer,
@@ -68,17 +68,51 @@ class EventService {
     required String content,
     required int colorValue,
     required int capacity,
+    required List<String> remainingImageUrls,
+    required List<XFile> newImages,
+    required List<String> removedImageUrls,
   }) async {
+    final List<String> imageUrls = List<String>.from(remainingImageUrls);
+
+    for (final image in newImages) {
+      try {
+        final Uint8List bytes = await image.readAsBytes();
+        final filename =
+            '${DateTime.now().millisecondsSinceEpoch}_${image.name}';
+        final storageRef =
+            _storage.ref().child('event_images/$eventId/$filename');
+        final uploadTask = await storageRef.putData(
+          bytes,
+          SettableMetadata(contentType: 'image/jpeg'),
+        );
+        final url = await uploadTask.ref.getDownloadURL();
+        imageUrls.add(url);
+      } catch (_) {
+        // ignore single-image failures to allow other updates to proceed
+      }
+    }
+
     await _eventsRef.doc(eventId).update({
       'name': name,
       'organizer': organizer,
       'startDateTime': Timestamp.fromDate(startDateTime),
       'endDateTime': Timestamp.fromDate(endDateTime),
       'content': content,
+      'imageUrls': imageUrls,
       'colorValue': colorValue,
       'capacity': capacity,
       'updatedAt': FieldValue.serverTimestamp(),
     });
+
+    for (final url in removedImageUrls) {
+      try {
+        await _storage.refFromURL(url).delete();
+      } catch (_) {
+        // ignore cleanup failure
+      }
+    }
+
+    return imageUrls;
   }
 
   Future<void> deleteEvent(CalendarEvent event) async {

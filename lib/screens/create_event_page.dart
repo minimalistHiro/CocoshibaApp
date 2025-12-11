@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 
@@ -47,6 +48,7 @@ class _CreateEventPageState extends State<CreateEventPage> {
   TimeOfDay? _endTime;
   final List<XFile> _images = [];
   bool _isSubmitting = false;
+  bool _isImportingExistingImages = false;
   int _selectedColorIndex = 5;
   int _selectedCapacity = 10;
 
@@ -227,14 +229,14 @@ class _CreateEventPageState extends State<CreateEventPage> {
           _ExistingEventPickerSheet(existingEventsStream: eventsStream),
     );
     if (selected == null) return;
-    _applyExistingEventToForm(selected);
+    await _applyExistingEventToForm(selected);
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text('${selected.name}の情報を読み込みました')),
     );
   }
 
-  void _applyExistingEventToForm(ExistingEvent event) {
+  Future<void> _applyExistingEventToForm(ExistingEvent event) async {
     if (!mounted) return;
     final colorIndex = _colorPalette.indexWhere(
       (color) => color.value == event.colorValue,
@@ -250,7 +252,67 @@ class _CreateEventPageState extends State<CreateEventPage> {
       if (_capacityOptions.contains(event.capacity)) {
         _selectedCapacity = event.capacity;
       }
+      _images.clear();
+      _isImportingExistingImages = event.imageUrls.isNotEmpty;
     });
+
+    if (event.imageUrls.isEmpty) {
+      setState(() => _isImportingExistingImages = false);
+      return;
+    }
+
+    try {
+      final downloadedImages =
+          await _downloadExistingEventImages(event.imageUrls.take(5).toList());
+      if (!mounted) return;
+      if (downloadedImages.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('画像の読み込みに失敗しました')),
+        );
+      } else {
+        setState(() {
+          _images.addAll(downloadedImages);
+        });
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isImportingExistingImages = false);
+      }
+    }
+  }
+
+  Future<List<XFile>> _downloadExistingEventImages(List<String> urls) async {
+    final HttpClient httpClient = HttpClient();
+    final List<XFile> downloaded = [];
+    try {
+      for (final url in urls) {
+        final uri = Uri.tryParse(url);
+        if (uri == null) continue;
+        try {
+          final request = await httpClient.getUrl(uri);
+          final response = await request.close();
+          if (response.statusCode == HttpStatus.ok) {
+            final bytes = await consolidateHttpClientResponseBytes(response);
+            final mimeType = response.headers.contentType?.mimeType;
+            final name = uri.pathSegments.isNotEmpty
+                ? uri.pathSegments.last
+                : 'existing_${DateTime.now().millisecondsSinceEpoch}.jpg';
+            downloaded.add(
+              XFile.fromData(
+                bytes,
+                mimeType: mimeType,
+                name: name,
+              ),
+            );
+          }
+        } catch (_) {
+          // Skip failed downloads to allow others to complete.
+        }
+      }
+    } finally {
+      httpClient.close(force: true);
+    }
+    return downloaded;
   }
 
   @override
@@ -373,6 +435,7 @@ class _CreateEventPageState extends State<CreateEventPage> {
                 images: _images,
                 onAdd: () => _pickImages(),
                 onRemove: _removeImage,
+                isBusy: _isSubmitting || _isImportingExistingImages,
               ),
               const SizedBox(height: 24),
               FilledButton(
@@ -398,15 +461,17 @@ class _ImagePickerGrid extends StatelessWidget {
     required this.images,
     required this.onAdd,
     required this.onRemove,
+    required this.isBusy,
   });
 
   final List<XFile> images;
   final VoidCallback onAdd;
   final void Function(XFile image) onRemove;
+  final bool isBusy;
 
   @override
   Widget build(BuildContext context) {
-    final canAddMore = images.length < 5;
+    final canAddMore = !isBusy && images.length < 5;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -424,63 +489,71 @@ class _ImagePickerGrid extends StatelessWidget {
           ],
         ),
         const SizedBox(height: 12),
-        Wrap(
-          spacing: 12,
-          runSpacing: 12,
-          children: [
-            for (final image in images)
-              Stack(
-                children: [
-                  ClipRRect(
-                    borderRadius: BorderRadius.circular(12),
-                    child: AspectRatio(
-                      aspectRatio: 1,
-                      child: Image.file(
-                        File(image.path),
-                        fit: BoxFit.cover,
-                        width: 110,
-                        height: 110,
-                      ),
-                    ),
-                  ),
-                  Positioned(
-                    top: 4,
-                    right: 4,
-                    child: GestureDetector(
-                      onTap: () => onRemove(image),
-                      child: Container(
-                        decoration: const BoxDecoration(
-                          color: Colors.black54,
-                          shape: BoxShape.circle,
-                        ),
-                        padding: const EdgeInsets.all(4),
-                        child: const Icon(
-                          Icons.close,
-                          size: 16,
-                          color: Colors.white,
+        if (isBusy && images.isEmpty)
+          Container(
+            width: 110,
+            height: 110,
+            alignment: Alignment.center,
+            child: const CircularProgressIndicator(),
+          )
+        else
+          Wrap(
+            spacing: 12,
+            runSpacing: 12,
+            children: [
+              for (final image in images)
+                Stack(
+                  children: [
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(12),
+                      child: AspectRatio(
+                        aspectRatio: 1,
+                        child: Image.file(
+                          File(image.path),
+                          fit: BoxFit.cover,
+                          width: 110,
+                          height: 110,
                         ),
                       ),
                     ),
-                  ),
-                ],
-              ),
-            if (canAddMore)
-              GestureDetector(
-                onTap: onAdd,
-                child: Container(
-                  width: 110,
-                  height: 110,
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: Colors.grey.shade400),
-                  ),
-                  child: const Center(
-                    child: Icon(Icons.add_a_photo),
+                    Positioned(
+                      top: 4,
+                      right: 4,
+                      child: GestureDetector(
+                        onTap: isBusy ? null : () => onRemove(image),
+                        child: Container(
+                          decoration: const BoxDecoration(
+                            color: Colors.black54,
+                            shape: BoxShape.circle,
+                          ),
+                          padding: const EdgeInsets.all(4),
+                          child: const Icon(
+                            Icons.close,
+                            size: 16,
+                            color: Colors.white,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              if (canAddMore)
+                GestureDetector(
+                  onTap: isBusy ? null : onAdd,
+                  child: Container(
+                    width: 110,
+                    height: 110,
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: Colors.grey.shade400),
+                    ),
+                    child: const Center(
+                      child: Icon(Icons.add_a_photo),
+                    ),
                   ),
                 ),
-              ),
-          ],
-        ),
+            ],
+          ),
       ],
     );
   }

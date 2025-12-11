@@ -93,6 +93,8 @@ class FirebaseAuthService {
         'ageGroup': ageGroup,
         'area': area,
         'photoUrl': photoUrl,
+        'isOwner': false,
+        'isSubOwner': false,
         'points': 0,
         'createdAt': FieldValue.serverTimestamp(),
       });
