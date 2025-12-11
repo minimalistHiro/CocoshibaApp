@@ -348,7 +348,7 @@ class _AccountPageState extends State<AccountPage> {
               context: context,
               icon: Icons.admin_panel_settings_outlined,
               title: 'オーナー設定',
-              subtitle: 'ポイント還元率の管理',
+              subtitle: 'ポイント還元率・店舗情報の管理',
               onTap: () => Navigator.of(context).push(
                 MaterialPageRoute(
                   builder: (_) => const OwnerSettingsPage(),

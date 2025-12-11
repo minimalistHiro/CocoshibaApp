@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../models/owner_contact_info.dart';
 import '../services/owner_settings_service.dart';
 
 class OwnerSettingsPage extends StatefulWidget {
@@ -14,24 +15,51 @@ class _OwnerSettingsPageState extends State<OwnerSettingsPage> {
   final List<int> _rateOptions =
       List<int>.generate(100, (index) => index + 1); // 1〜100
   final OwnerSettingsService _ownerSettingsService = OwnerSettingsService();
+  final TextEditingController _siteUrlController = TextEditingController();
+  final TextEditingController _emailController = TextEditingController();
+  final TextEditingController _phoneController = TextEditingController();
+  final TextEditingController _addressController = TextEditingController();
+  final TextEditingController _facebookController = TextEditingController();
+  final TextEditingController _instagramController = TextEditingController();
+  final TextEditingController _xController = TextEditingController();
+  final TextEditingController _businessHoursController =
+      TextEditingController();
 
   int _selectedRate = 5;
   bool _isLoading = true;
   bool _isSaving = false;
+  bool _isContactSaving = false;
 
   @override
   void initState() {
     super.initState();
-    _loadInitialRate();
+    _loadInitialData();
   }
 
-  Future<void> _loadInitialRate() async {
+  @override
+  void dispose() {
+    _siteUrlController.dispose();
+    _emailController.dispose();
+    _phoneController.dispose();
+    _addressController.dispose();
+    _facebookController.dispose();
+    _instagramController.dispose();
+    _xController.dispose();
+    _businessHoursController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _loadInitialData() async {
     try {
-      final rate = await _ownerSettingsService.fetchPointRate();
-      if (!mounted || rate == null) return;
-      if (rate >= 1 && rate <= _rateOptions.length) {
-        setState(() => _selectedRate = rate);
+      final rateFuture = _ownerSettingsService.fetchPointRate();
+      final contactFuture = _ownerSettingsService.fetchContactInfo();
+      final rate = await rateFuture;
+      final contactInfo = await contactFuture ?? OwnerContactInfo.empty;
+      if (!mounted) return;
+      if (rate != null && rate >= 1 && rate <= _rateOptions.length) {
+        _selectedRate = rate;
       }
+      _applyContactInfo(contactInfo);
     } catch (_) {
       // Ignore load errors and keep default value.
     } finally {
@@ -39,6 +67,17 @@ class _OwnerSettingsPageState extends State<OwnerSettingsPage> {
         setState(() => _isLoading = false);
       }
     }
+  }
+
+  void _applyContactInfo(OwnerContactInfo info) {
+    _siteUrlController.text = info.siteUrl;
+    _emailController.text = info.email;
+    _phoneController.text = info.phoneNumber;
+    _addressController.text = info.address;
+    _facebookController.text = info.facebook;
+    _instagramController.text = info.instagram;
+    _xController.text = info.xAccount;
+    _businessHoursController.text = info.businessHours;
   }
 
   Future<void> _showSaveConfirmation() async {
@@ -88,6 +127,59 @@ class _OwnerSettingsPageState extends State<OwnerSettingsPage> {
     } finally {
       if (mounted) setState(() => _isSaving = false);
     }
+  }
+
+  Future<void> _saveContactInfo() async {
+    setState(() => _isContactSaving = true);
+    final messenger = ScaffoldMessenger.of(context);
+    final info = OwnerContactInfo(
+      siteUrl: _siteUrlController.text.trim(),
+      email: _emailController.text.trim(),
+      phoneNumber: _phoneController.text.trim(),
+      address: _addressController.text.trim(),
+      facebook: _facebookController.text.trim(),
+      instagram: _instagramController.text.trim(),
+      xAccount: _xController.text.trim(),
+      businessHours: _businessHoursController.text.trim(),
+    );
+    try {
+      await _ownerSettingsService.saveContactInfo(info);
+      if (!mounted) return;
+      messenger.showSnackBar(
+        const SnackBar(content: Text('店舗情報を保存しました')),
+      );
+      Navigator.of(context).pop();
+    } catch (_) {
+      if (!mounted) return;
+      messenger.showSnackBar(
+        const SnackBar(content: Text('店舗情報の保存に失敗しました')),
+      );
+    } finally {
+      if (mounted) setState(() => _isContactSaving = false);
+    }
+  }
+
+  Future<void> _showContactSaveConfirmation() async {
+    final shouldSave = await showDialog<bool>(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: const Text('確認'),
+            content: const Text('この店舗情報を保存しますか？'),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(false),
+                child: const Text('キャンセル'),
+              ),
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(true),
+                child: const Text('保存する'),
+              ),
+            ],
+          ),
+        ) ??
+        false;
+    if (!mounted || !shouldSave) return;
+    await _saveContactInfo();
   }
 
   @override
@@ -176,6 +268,127 @@ class _OwnerSettingsPageState extends State<OwnerSettingsPage> {
                             )
                           : const Icon(Icons.save_outlined),
                       label: Text(_isSaving ? '保存中...' : '設定を保存'),
+                      style: FilledButton.styleFrom(
+                        minimumSize: const Size.fromHeight(48),
+                      ),
+                    ),
+                    const SizedBox(height: 32),
+                    Text(
+                      '店舗情報',
+                      style: Theme.of(context)
+                          .textTheme
+                          .titleMedium
+                          ?.copyWith(fontWeight: FontWeight.bold),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      'アプリ内で共有する基本情報を入力してください。',
+                      style: Theme.of(context).textTheme.bodyMedium,
+                    ),
+                    const SizedBox(height: 16),
+                    Card(
+                      child: Padding(
+                        padding: const EdgeInsets.all(16),
+                        child: Column(
+                          children: [
+                            TextFormField(
+                              controller: _siteUrlController,
+                              decoration: const InputDecoration(
+                                labelText: 'サイトURL',
+                                hintText: 'https://example.com',
+                              ),
+                              keyboardType: TextInputType.url,
+                              textInputAction: TextInputAction.next,
+                            ),
+                            const SizedBox(height: 12),
+                            TextFormField(
+                              controller: _emailController,
+                              decoration: const InputDecoration(
+                                labelText: 'メールアドレス',
+                                hintText: 'info@example.com',
+                              ),
+                              keyboardType: TextInputType.emailAddress,
+                              textInputAction: TextInputAction.next,
+                            ),
+                            const SizedBox(height: 12),
+                            TextFormField(
+                              controller: _phoneController,
+                              decoration: const InputDecoration(
+                                labelText: '電話番号',
+                                hintText: '000-0000-0000',
+                              ),
+                              keyboardType: TextInputType.phone,
+                              textInputAction: TextInputAction.next,
+                            ),
+                            const SizedBox(height: 12),
+                            TextFormField(
+                              controller: _addressController,
+                              decoration: const InputDecoration(
+                                labelText: '住所',
+                              ),
+                              keyboardType: TextInputType.streetAddress,
+                              minLines: 1,
+                              maxLines: 3,
+                            ),
+                            const SizedBox(height: 12),
+                            TextFormField(
+                              controller: _facebookController,
+                              decoration: const InputDecoration(
+                                labelText: 'Facebook',
+                                hintText: 'https://www.facebook.com/...',
+                              ),
+                              keyboardType: TextInputType.url,
+                              textInputAction: TextInputAction.next,
+                            ),
+                            const SizedBox(height: 12),
+                            TextFormField(
+                              controller: _instagramController,
+                              decoration: const InputDecoration(
+                                labelText: 'Instagram',
+                                hintText: '@cocoshiba',
+                              ),
+                              textInputAction: TextInputAction.next,
+                            ),
+                            const SizedBox(height: 12),
+                            TextFormField(
+                              controller: _xController,
+                              decoration: const InputDecoration(
+                                labelText: 'X (旧Twitter)',
+                                hintText: '@cocoshiba',
+                              ),
+                              textInputAction: TextInputAction.next,
+                            ),
+                            const SizedBox(height: 12),
+                            TextFormField(
+                              controller: _businessHoursController,
+                              decoration: const InputDecoration(
+                                labelText: '営業時間',
+                                hintText: '例: 平日 10:00-20:00 / 土日 9:00-18:00',
+                              ),
+                              minLines: 1,
+                              maxLines: 3,
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 24),
+                    FilledButton.icon(
+                      onPressed: _isContactSaving
+                          ? null
+                          : _showContactSaveConfirmation,
+                      icon: _isContactSaving
+                          ? const SizedBox(
+                              height: 20,
+                              width: 20,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                valueColor:
+                                    AlwaysStoppedAnimation<Color>(Colors.white),
+                              ),
+                            )
+                          : const Icon(Icons.storefront_outlined),
+                      label: Text(_isContactSaving ? '保存中...' : '店舗情報を保存'),
                       style: FilledButton.styleFrom(
                         minimumSize: const Size.fromHeight(48),
                       ),

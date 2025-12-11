@@ -9,6 +9,7 @@ import '../services/notification_service.dart';
 import '../widgets/point_card.dart';
 import 'menu_list_page.dart';
 import 'notification_page.dart';
+import 'point_history_page.dart';
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
@@ -138,6 +139,14 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
+  void _openPointHistoryPage() {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => const PointHistoryPage(),
+      ),
+    );
+  }
+
   void _openMenuList() {
     Navigator.of(context).push(
       MaterialPageRoute(
@@ -218,9 +227,9 @@ class _HomePageState extends State<HomePage> {
                   ),
                   Expanded(
                     child: _ShortcutItem(
-                      icon: Icons.storefront_outlined,
-                      label: '本日の獲得',
-                      onTap: () => _showShortcutMessage('本日の獲得'),
+                      icon: Icons.history,
+                      label: 'ポイント履歴',
+                      onTap: _openPointHistoryPage,
                     ),
                   ),
                 ],
