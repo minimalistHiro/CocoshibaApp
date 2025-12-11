@@ -19,6 +19,7 @@ class _SignUpPageState extends State<SignUpPage> {
   final _userInfoFormKey = GlobalKey<FormState>();
   final _credentialsFormKey = GlobalKey<FormState>();
   final _nameController = TextEditingController();
+  final _bioController = TextEditingController();
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
   final _confirmPasswordController = TextEditingController();
@@ -53,6 +54,7 @@ class _SignUpPageState extends State<SignUpPage> {
   @override
   void dispose() {
     _nameController.dispose();
+    _bioController.dispose();
     _emailController.dispose();
     _passwordController.dispose();
     _confirmPasswordController.dispose();
@@ -79,6 +81,7 @@ class _SignUpPageState extends State<SignUpPage> {
         area: _selectedArea!,
         email: _emailController.text,
         password: _passwordController.text,
+        bio: _bioController.text,
         profileImageBytes: imageBytes,
       );
 
@@ -242,6 +245,19 @@ class _SignUpPageState extends State<SignUpPage> {
               }
               return null;
             },
+          ),
+          const SizedBox(height: 16),
+          TextFormField(
+            controller: _bioController,
+            decoration: const InputDecoration(
+              labelText: '自己紹介（任意）',
+              alignLabelWithHint: true,
+              hintText: '趣味や好きなことを書いてみましょう',
+            ),
+            keyboardType: TextInputType.multiline,
+            minLines: 5,
+            maxLines: 8,
+            maxLength: 200,
           ),
           const SizedBox(height: 24),
           FilledButton(

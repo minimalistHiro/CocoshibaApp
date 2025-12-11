@@ -67,15 +67,19 @@ class FirebaseAuthService {
     required String area,
     required String email,
     required String password,
+    String? bio,
     Uint8List? profileImageBytes,
   }) async {
+    final trimmedEmail = email.trim();
+    final trimmedPassword = password.trim();
+
     final credential = await _auth.createUserWithEmailAndPassword(
-      email: email.trim(),
-      password: password.trim(),
+      email: trimmedEmail,
+      password: trimmedPassword,
     );
 
     final trimmedName = name.trim();
-    final trimmedEmail = email.trim();
+    final trimmedBio = bio?.trim();
 
     final user = credential.user;
     await user?.updateDisplayName(trimmedName);
@@ -87,7 +91,7 @@ class FirebaseAuthService {
     }
 
     if (user != null) {
-      await _firestore.collection('users').doc(user.uid).set({
+      final data = {
         'name': trimmedName,
         'email': trimmedEmail,
         'ageGroup': ageGroup,
@@ -97,7 +101,13 @@ class FirebaseAuthService {
         'isSubOwner': false,
         'points': 0,
         'createdAt': FieldValue.serverTimestamp(),
-      });
+      };
+
+      if (trimmedBio != null && trimmedBio.isNotEmpty) {
+        data['bio'] = trimmedBio;
+      }
+
+      await _firestore.collection('users').doc(user.uid).set(data);
     }
 
     return credential;

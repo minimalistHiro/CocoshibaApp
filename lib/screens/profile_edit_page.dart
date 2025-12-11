@@ -318,7 +318,8 @@ class _ProfileEditPageState extends State<ProfileEditPage> {
                           const SizedBox(height: 24),
                           TextFormField(
                             controller: _bioController,
-                            maxLines: 4,
+                            minLines: 5,
+                            maxLines: 8,
                             maxLength: 200,
                             decoration: const InputDecoration(
                               labelText: '自己紹介',

@@ -363,7 +363,7 @@ class _UpcomingEventCarouselState extends State<_UpcomingEventCarousel> {
   @override
   Widget build(BuildContext context) {
     return AspectRatio(
-      aspectRatio: 3 / 4,
+      aspectRatio: 3 / 2,
       child: PageView.builder(
         controller: _controller,
         itemCount: widget.events.length,
