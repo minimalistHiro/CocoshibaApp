@@ -7,6 +7,7 @@ import '../services/event_service.dart';
 import '../services/firebase_auth_service.dart';
 import '../services/notification_service.dart';
 import '../widgets/point_card.dart';
+import 'menu_list_page.dart';
 import 'notification_page.dart';
 
 class HomePage extends StatefulWidget {
@@ -137,6 +138,14 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
+  void _openMenuList() {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => const MenuListPage(),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return SafeArea(
@@ -148,7 +157,8 @@ class _HomePageState extends State<HomePage> {
           FutureBuilder<int>(
             future: _pointsFuture,
             builder: (context, snapshot) {
-              final isLoading = snapshot.connectionState == ConnectionState.waiting;
+              final isLoading =
+                  snapshot.connectionState == ConnectionState.waiting;
               final points = snapshot.data ?? 0;
 
               return Column(
@@ -166,10 +176,8 @@ class _HomePageState extends State<HomePage> {
                       padding: const EdgeInsets.only(top: 12),
                       child: Text(
                         'ポイントの取得に失敗しました。更新ボタンをお試しください。',
-                        style: Theme.of(context)
-                            .textTheme
-                            .bodySmall
-                            ?.copyWith(color: Theme.of(context).colorScheme.error),
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                            color: Theme.of(context).colorScheme.error),
                       ),
                     ),
                 ],
@@ -196,9 +204,9 @@ class _HomePageState extends State<HomePage> {
                   ),
                   Expanded(
                     child: _ShortcutItem(
-                      icon: Icons.send,
-                      label: '送る',
-                      onTap: () => _showShortcutMessage('送る'),
+                      icon: Icons.restaurant_menu_outlined,
+                      label: 'メニュー',
+                      onTap: _openMenuList,
                     ),
                   ),
                   Expanded(
@@ -420,23 +428,22 @@ class _UpcomingEventCarouselState extends State<_UpcomingEventCarousel> {
                       children: [
                         Text(
                           dateLabel,
-                          style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                                color: Colors.white,
-                                fontWeight: FontWeight.w600,
-                              ),
+                          style:
+                              Theme.of(context).textTheme.bodySmall?.copyWith(
+                                    color: Colors.white,
+                                    fontWeight: FontWeight.w600,
+                                  ),
                         ),
                         const SizedBox(height: 4),
                         Text(
                           event.name,
                           maxLines: 2,
                           overflow: TextOverflow.ellipsis,
-                          style: Theme.of(context)
-                              .textTheme
-                              .titleMedium
-                              ?.copyWith(
-                                color: Colors.white,
-                                fontWeight: FontWeight.bold,
-                              ),
+                          style:
+                              Theme.of(context).textTheme.titleMedium?.copyWith(
+                                    color: Colors.white,
+                                    fontWeight: FontWeight.bold,
+                                  ),
                         ),
                       ],
                     ),

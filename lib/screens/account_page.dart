@@ -8,6 +8,7 @@ import 'login_info_update_page.dart';
 import 'notification_settings_page.dart';
 import 'closed_days_settings_page.dart';
 import 'owner_settings_page.dart';
+import 'menu_management_page.dart';
 import 'profile_edit_page.dart';
 import 'support_help_page.dart';
 
@@ -55,8 +56,7 @@ class _AccountPageState extends State<AccountPage> {
       navigator.popUntil((route) => route.isFirst);
     } on FirebaseAuthException catch (e) {
       final code = e.code;
-      final message =
-          e.message ?? 'アカウント削除に失敗しました（再度ログインが必要な場合があります）';
+      final message = e.message ?? 'アカウント削除に失敗しました（再度ログインが必要な場合があります）';
       messenger.showSnackBar(
         SnackBar(content: Text('[$code] $message')),
       );
@@ -352,6 +352,17 @@ class _AccountPageState extends State<AccountPage> {
               onTap: () => Navigator.of(context).push(
                 MaterialPageRoute(
                   builder: (_) => const OwnerSettingsPage(),
+                ),
+              ),
+            ),
+            _buildSettingCard(
+              context: context,
+              icon: Icons.restaurant_menu_outlined,
+              title: 'メニュー管理',
+              subtitle: 'メニュー一覧の編集・追加',
+              onTap: () => Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (_) => const MenuManagementPage(),
                 ),
               ),
             ),
