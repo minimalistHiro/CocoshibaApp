@@ -9,6 +9,7 @@ import '../services/firebase_auth_service.dart';
 import '../services/notification_service.dart';
 import '../services/home_page_content_service.dart';
 import '../widgets/point_card.dart';
+import 'books_page.dart';
 import 'menu_list_page.dart';
 import 'notification_page.dart';
 import 'point_history_page.dart';
@@ -158,6 +159,14 @@ class _HomePageState extends State<HomePage> {
     Navigator.of(context).push(
       MaterialPageRoute(
         builder: (_) => const MenuListPage(),
+      ),
+    );
+  }
+
+  void _openBookOrderPage() {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => const BooksPage(),
       ),
     );
   }
@@ -316,6 +325,8 @@ class _HomePageState extends State<HomePage> {
               );
             },
           ),
+          const SizedBox(height: 32),
+          _BookOrderButton(onTap: _openBookOrderPage),
         ],
       ),
     );
@@ -521,6 +532,44 @@ class _ShortcutItem extends StatelessWidget {
                 label,
                 style: textStyle,
                 textAlign: TextAlign.center,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _BookOrderButton extends StatelessWidget {
+  const _BookOrderButton({required this.onTap});
+
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Material(
+      elevation: 4,
+      borderRadius: BorderRadius.circular(32),
+      color: theme.colorScheme.secondary,
+      shadowColor: theme.colorScheme.secondary.withOpacity(0.4),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(32),
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 20),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Icon(Icons.auto_stories, color: Colors.white),
+              const SizedBox(width: 12),
+              Text(
+                '本の注文はこちら',
+                style: theme.textTheme.titleMedium?.copyWith(
+                  color: Colors.white,
+                  fontWeight: FontWeight.bold,
+                ),
               ),
             ],
           ),

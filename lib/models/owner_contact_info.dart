@@ -1,5 +1,6 @@
 class OwnerContactInfo {
   const OwnerContactInfo({
+    this.storeId = '',
     this.siteUrl = '',
     this.email = '',
     this.phoneNumber = '',
@@ -10,6 +11,7 @@ class OwnerContactInfo {
     this.businessHours = '',
   });
 
+  final String storeId;
   final String siteUrl;
   final String email;
   final String phoneNumber;
@@ -31,11 +33,13 @@ class OwnerContactInfo {
       instagram: _stringValue(data['instagram']),
       xAccount: _stringValue(data['xAccount']),
       businessHours: _stringValue(data['businessHours']),
+      storeId: _stringValue(data['storeId']),
     );
   }
 
   Map<String, dynamic> toMap() {
     return {
+      'storeId': storeId,
       'siteUrl': siteUrl,
       'email': email,
       'phoneNumber': phoneNumber,

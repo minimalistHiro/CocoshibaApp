@@ -1,7 +1,11 @@
+import 'dart:math';
+
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../models/owner_contact_info.dart';
 import '../services/owner_settings_service.dart';
+import 'owner_permission_management_page.dart';
 
 class OwnerSettingsPage extends StatefulWidget {
   const OwnerSettingsPage({super.key});
@@ -15,6 +19,7 @@ class _OwnerSettingsPageState extends State<OwnerSettingsPage> {
   final List<int> _rateOptions =
       List<int>.generate(100, (index) => index + 1); // 1〜100
   final OwnerSettingsService _ownerSettingsService = OwnerSettingsService();
+  final TextEditingController _storeIdController = TextEditingController();
   final TextEditingController _siteUrlController = TextEditingController();
   final TextEditingController _emailController = TextEditingController();
   final TextEditingController _phoneController = TextEditingController();
@@ -24,11 +29,16 @@ class _OwnerSettingsPageState extends State<OwnerSettingsPage> {
   final TextEditingController _xController = TextEditingController();
   final TextEditingController _businessHoursController =
       TextEditingController();
+  final Random _random = Random.secure();
+  static const int _storeIdLength = 28;
+  static const String _storeIdChars =
+      'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_';
 
   int _selectedRate = 5;
   bool _isLoading = true;
   bool _isSaving = false;
   bool _isContactSaving = false;
+  String? _storeIdError;
 
   @override
   void initState() {
@@ -38,6 +48,7 @@ class _OwnerSettingsPageState extends State<OwnerSettingsPage> {
 
   @override
   void dispose() {
+    _storeIdController.dispose();
     _siteUrlController.dispose();
     _emailController.dispose();
     _phoneController.dispose();
@@ -70,6 +81,9 @@ class _OwnerSettingsPageState extends State<OwnerSettingsPage> {
   }
 
   void _applyContactInfo(OwnerContactInfo info) {
+    final storeId = info.storeId.isNotEmpty ? info.storeId : _generateStoreId();
+    _storeIdController.text = storeId;
+    _storeIdError = null;
     _siteUrlController.text = info.siteUrl;
     _emailController.text = info.email;
     _phoneController.text = info.phoneNumber;
@@ -130,9 +144,13 @@ class _OwnerSettingsPageState extends State<OwnerSettingsPage> {
   }
 
   Future<void> _saveContactInfo() async {
+    if (!_validateStoreId()) {
+      return;
+    }
     setState(() => _isContactSaving = true);
     final messenger = ScaffoldMessenger.of(context);
     final info = OwnerContactInfo(
+      storeId: _storeIdController.text.trim(),
       siteUrl: _siteUrlController.text.trim(),
       email: _emailController.text.trim(),
       phoneNumber: _phoneController.text.trim(),
@@ -182,6 +200,47 @@ class _OwnerSettingsPageState extends State<OwnerSettingsPage> {
     await _saveContactInfo();
   }
 
+  void _openOwnerPermissionManagement() {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => const OwnerPermissionManagementPage(),
+      ),
+    );
+  }
+
+  String _generateStoreId() {
+    final buffer = StringBuffer();
+    for (var i = 0; i < _storeIdLength; i++) {
+      buffer.write(
+        _storeIdChars[_random.nextInt(_storeIdChars.length)],
+      );
+    }
+    return buffer.toString();
+  }
+
+  bool _validateStoreId() {
+    final value = _storeIdController.text.trim();
+    final isValid = value.length == _storeIdLength &&
+        RegExp(r'^[A-Za-z0-9_-]+$').hasMatch(value);
+    if (!isValid) {
+      setState(() {
+        _storeIdError = '28文字の英数字(-, _)で入力してください';
+      });
+      return false;
+    }
+    if (_storeIdError != null) {
+      setState(() => _storeIdError = null);
+    }
+    return true;
+  }
+
+  void _regenerateStoreId() {
+    setState(() {
+      _storeIdController.text = _generateStoreId();
+      _storeIdError = null;
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -197,6 +256,16 @@ class _OwnerSettingsPageState extends State<OwnerSettingsPage> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
+                    Card(
+                      child: ListTile(
+                        leading: const Icon(Icons.admin_panel_settings_outlined),
+                        title: const Text('オーナー権限管理'),
+                        subtitle: const Text('オーナー・サブオーナーの権限を変更'),
+                        trailing: const Icon(Icons.chevron_right),
+                        onTap: _openOwnerPermissionManagement,
+                      ),
+                    ),
+                    const SizedBox(height: 32),
                     Text(
                       'ポイント還元率',
                       style: Theme.of(context)
@@ -291,6 +360,33 @@ class _OwnerSettingsPageState extends State<OwnerSettingsPage> {
                         padding: const EdgeInsets.all(16),
                         child: Column(
                           children: [
+                            TextFormField(
+                              controller: _storeIdController,
+                              decoration: InputDecoration(
+                                labelText: '店舗ID',
+                                helperText:
+                                    'Firebase UID と同じ形式 (28文字の英数字 + -_)',
+                                errorText: _storeIdError,
+                                suffixIcon: IconButton(
+                                  icon: const Icon(Icons.autorenew),
+                                  tooltip: '自動作成',
+                                  onPressed:
+                                      _isContactSaving ? null : _regenerateStoreId,
+                                ),
+                              ),
+                              maxLength: _storeIdLength,
+                              inputFormatters: [
+                                FilteringTextInputFormatter.allow(
+                                  RegExp(r'[A-Za-z0-9_-]'),
+                                ),
+                              ],
+                              onChanged: (_) {
+                                if (_storeIdError != null) {
+                                  _validateStoreId();
+                                }
+                              },
+                            ),
+                            const SizedBox(height: 12),
                             TextFormField(
                               controller: _siteUrlController,
                               decoration: const InputDecoration(
