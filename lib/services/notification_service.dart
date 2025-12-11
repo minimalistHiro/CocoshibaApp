@@ -18,6 +18,9 @@ class NotificationService {
 
   CollectionReference<Map<String, dynamic>> get _notificationsRef =>
       _firestore.collection('notifications');
+  CollectionReference<Map<String, dynamic>> _personalNotificationsRef(
+          String userId) =>
+      _firestore.collection('users').doc(userId).collection('personalNotifications');
   CollectionReference<Map<String, dynamic>> _userReadsRef(String userId) =>
       _firestore
           .collection('users')
@@ -25,12 +28,12 @@ class NotificationService {
           .collection('notificationReads');
 
   Stream<List<AppNotification>> watchNotifications({String? userId}) {
-    return _notificationsRef
+    final baseStream = _notificationsRef
         .orderBy('createdAt', descending: true)
         .snapshots()
-        .map((snapshot) {
-      final notifications =
-          snapshot.docs.map(AppNotification.fromDocument).toList();
+        .map((snapshot) =>
+            snapshot.docs.map(AppNotification.fromDocument).toList())
+        .map((notifications) {
       if (userId == null || userId.isEmpty) {
         return notifications
             .where((notification) => notification.targetUserId == null)
@@ -42,6 +45,18 @@ class NotificationService {
               notification.targetUserId == userId)
           .toList();
     });
+
+    if (userId == null || userId.isEmpty) {
+      return baseStream;
+    }
+
+    final personalStream = _personalNotificationsRef(userId)
+        .orderBy('createdAt', descending: true)
+        .snapshots()
+        .map((snapshot) =>
+            snapshot.docs.map(AppNotification.fromDocument).toList());
+
+    return _combineNotificationStreams(baseStream, personalStream);
   }
 
   Future<void> createNotification({
@@ -70,6 +85,21 @@ class NotificationService {
       'category': category,
       'imageUrl': imageUrl,
       'targetUserId': targetUserId,
+      'createdAt': FieldValue.serverTimestamp(),
+    });
+  }
+
+  Future<void> createPersonalNotification({
+    required String userId,
+    required String title,
+    required String body,
+    required String category,
+  }) async {
+    await _personalNotificationsRef(userId).add({
+      'title': title,
+      'body': body,
+      'category': category,
+      'targetUserId': userId,
       'createdAt': FieldValue.serverTimestamp(),
     });
   }
@@ -135,6 +165,75 @@ class NotificationService {
     controller.onCancel = () async {
       await notificationSub?.cancel();
       await readSub?.cancel();
+    };
+
+    return controller.stream;
+  }
+
+  Stream<List<AppNotification>> _combineNotificationStreams(
+    Stream<List<AppNotification>> globalStream,
+    Stream<List<AppNotification>> personalStream,
+  ) {
+    final controller = StreamController<List<AppNotification>>.broadcast();
+    List<AppNotification> globalNotifications = const [];
+    List<AppNotification> personalNotifications = const [];
+    StreamSubscription<List<AppNotification>>? globalSub;
+    StreamSubscription<List<AppNotification>>? personalSub;
+    int listenerCount = 0;
+
+    void emit() {
+      final combined = <AppNotification>[
+        ...personalNotifications,
+        ...globalNotifications,
+      ]
+        ..sort((a, b) {
+          final aTime = a.createdAt ?? DateTime.fromMillisecondsSinceEpoch(0);
+          final bTime = b.createdAt ?? DateTime.fromMillisecondsSinceEpoch(0);
+          return bTime.compareTo(aTime);
+        });
+      controller.add(combined);
+    }
+
+    void startListening() {
+      globalSub ??= globalStream.listen(
+        (value) {
+          globalNotifications = value;
+          emit();
+        },
+        onError: controller.addError,
+      );
+      personalSub ??= personalStream.listen(
+        (value) {
+          personalNotifications = value;
+          emit();
+        },
+        onError: controller.addError,
+      );
+    }
+
+    Future<void> stopListening() async {
+      await globalSub?.cancel();
+      await personalSub?.cancel();
+      globalSub = null;
+      personalSub = null;
+      globalNotifications = const [];
+      personalNotifications = const [];
+    }
+
+    controller.onListen = () {
+      listenerCount += 1;
+      if (listenerCount == 1) {
+        startListening();
+      }
+    };
+
+    controller.onCancel = () {
+      listenerCount -= 1;
+      if (listenerCount <= 0) {
+        listenerCount = 0;
+        return stopListening();
+      }
+      return null;
     };
 
     return controller.stream;

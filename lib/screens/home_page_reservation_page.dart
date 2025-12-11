@@ -17,8 +17,6 @@ class HomePageReservationPage extends StatefulWidget {
 
 class _HomePageReservationPageState extends State<HomePageReservationPage> {
   late DateTime _selectedDate;
-  DateTime? _pickupDate;
-  late final TextEditingController _pickupDateController;
   final FirebaseAuthService _authService = FirebaseAuthService();
   final HomePageReservationService _reservationService =
       HomePageReservationService();
@@ -30,30 +28,33 @@ class _HomePageReservationPageState extends State<HomePageReservationPage> {
     super.initState();
     final now = DateTime.now();
     _selectedDate = DateTime(now.year, now.month, now.day);
-    _pickupDateController = TextEditingController();
   }
 
-  @override
-  void dispose() {
-    _pickupDateController.dispose();
-    super.dispose();
-  }
-
-  Future<void> _pickPickupDate() async {
-    final now = DateTime.now();
-    final initial = _pickupDate ?? _selectedDate;
-    final picked = await showDatePicker(
-      context: context,
-      initialDate: initial,
-      firstDate: DateTime(now.year, now.month, now.day),
-      lastDate: DateTime(now.year + 1),
-    );
-    if (picked != null) {
-      setState(() {
-        _pickupDate = picked;
-        _pickupDateController.text = _formatDate(picked);
-      });
+  Future<void> _handleConfirm() async {
+    if (_isSaving) return;
+    final pickupLabel = _formatDate(_selectedDate);
+    final confirmed = await showDialog<bool>(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: const Text('確認'),
+            content: Text('$pickupLabel に受け取ります。よろしいですか？'),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(false),
+                child: const Text('キャンセル'),
+              ),
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(true),
+                child: const Text('受け取る'),
+              ),
+            ],
+          ),
+        ) ??
+        false;
+    if (!confirmed) {
+      return;
     }
+    await _confirmReservation();
   }
 
   Future<void> _confirmReservation() async {
@@ -66,13 +67,6 @@ class _HomePageReservationPageState extends State<HomePageReservationPage> {
       return;
     }
 
-    if (_pickupDate == null) {
-      messenger.showSnackBar(
-        const SnackBar(content: Text('受け取り日を選択してください')),
-      );
-      return;
-    }
-
     setState(() => _isSaving = true);
     try {
       await _reservationService.createReservation(
@@ -80,22 +74,21 @@ class _HomePageReservationPageState extends State<HomePageReservationPage> {
         contentTitle: widget.content.title,
         reservedDate: _selectedDate,
         userId: user.uid,
-        pickupDate: _pickupDate,
+        pickupDate: _selectedDate,
       );
-      final reservedLabel = _formatDate(_selectedDate);
-      final pickupLabel = _formatDate(_pickupDate!);
-      await _notificationService.createNotification(
+      final pickupLabel = _formatDate(_selectedDate);
+      await _notificationService.createPersonalNotification(
+        userId: user.uid,
         title: '予約が完了しました',
         body:
-            '${widget.content.title} の予約を受け付けました。\n予約日: $reservedLabel\n受け取り日: $pickupLabel',
+            '${widget.content.title} の予約を受け付けました。\n受け取り日: $pickupLabel',
         category: '予約',
-        targetUserId: user.uid,
       );
       if (!mounted) return;
       messenger.showSnackBar(
         const SnackBar(content: Text('予約を受け付けました')),
       );
-      Navigator.of(context).pop();
+      Navigator.of(context).pop(true);
     } catch (_) {
       messenger.showSnackBar(
         const SnackBar(content: Text('予約の保存に失敗しました。もう一度お試しください')),
@@ -120,7 +113,7 @@ class _HomePageReservationPageState extends State<HomePageReservationPage> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              'ご希望の日付を選択してください',
+              '受け取り日を選択してください',
               style: Theme.of(context)
                   .textTheme
                   .titleMedium
@@ -128,32 +121,21 @@ class _HomePageReservationPageState extends State<HomePageReservationPage> {
             ),
             const SizedBox(height: 12),
             Expanded(
-          child: Card(
-            child: CalendarDatePicker(
-              initialDate: _selectedDate,
-              firstDate: DateTime(now.year, now.month, now.day),
-              lastDate: DateTime(now.year + 1),
-              onDateChanged: (date) {
-                setState(() => _selectedDate = date);
-              },
+              child: Card(
+                child: CalendarDatePicker(
+                  initialDate: _selectedDate,
+                  firstDate: DateTime(now.year, now.month, now.day),
+                  lastDate: DateTime(now.year + 1),
+                  onDateChanged: (date) {
+                    setState(() => _selectedDate = date);
+                  },
+                ),
+              ),
             ),
-          ),
-        ),
-        const SizedBox(height: 16),
-        TextField(
-          controller: _pickupDateController,
-          readOnly: true,
-          decoration: const InputDecoration(
-            labelText: '受け取り日',
-            hintText: '受け取り日を選択してください',
-            suffixIcon: Icon(Icons.calendar_today),
-          ),
-          onTap: _pickPickupDate,
-        ),
-        const SizedBox(height: 16),
-        Center(
-          child: FilledButton.icon(
-            onPressed: _isSaving ? null : _confirmReservation,
+            const SizedBox(height: 16),
+            Center(
+              child: FilledButton.icon(
+                onPressed: _isSaving ? null : _handleConfirm,
                 icon: _isSaving
                     ? const SizedBox(
                         width: 18,
@@ -164,7 +146,7 @@ class _HomePageReservationPageState extends State<HomePageReservationPage> {
                         ),
                       )
                     : const Icon(Icons.check_circle_outline),
-                label: Text(_isSaving ? '送信中...' : 'この日で予約する'),
+                label: Text(_isSaving ? '送信中...' : 'この日で受け取る'),
               ),
             ),
           ],

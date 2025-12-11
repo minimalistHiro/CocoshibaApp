@@ -1,11 +1,13 @@
 import 'dart:async';
 
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
 import '../models/home_page_content.dart';
 import '../services/firebase_auth_service.dart';
 import '../services/home_page_order_service.dart';
 import '../services/home_page_reservation_service.dart';
+import '../services/notification_service.dart';
 import 'home_page_reservation_page.dart';
 
 class HomePageContentDetailPage extends StatefulWidget {
@@ -26,8 +28,11 @@ class _HomePageContentDetailPageState
   final HomePageReservationService _reservationService =
       HomePageReservationService();
   final HomePageOrderService _orderService = HomePageOrderService();
+  final NotificationService _notificationService = NotificationService();
   StreamSubscription<String?>? _reservationSubscription;
   StreamSubscription<String?>? _orderSubscription;
+  StreamSubscription<User?>? _authSubscription;
+  String? _userId;
   String? _reservationId;
   String? _orderId;
   bool _isOrderProcessing = false;
@@ -36,20 +41,41 @@ class _HomePageContentDetailPageState
   void initState() {
     super.initState();
     _pageController = PageController();
-    _subscribeActionState();
+    _userId = _authService.currentUser?.uid;
+    _authSubscription =
+        FirebaseAuth.instance.authStateChanges().listen((user) {
+      final newUserId = user?.uid;
+      if (newUserId == _userId) {
+        return;
+      }
+      _userId = newUserId;
+      _handleAuthUserChanged();
+    });
+    _handleAuthUserChanged();
   }
 
-  void _subscribeActionState() {
-    final userId = _authService.currentUser?.uid;
-    if (userId == null) return;
+  void _handleAuthUserChanged() {
+    _reservationSubscription?.cancel();
+    _orderSubscription?.cancel();
+    _reservationSubscription = null;
+    _orderSubscription = null;
+    _reservationId = null;
+    _orderId = null;
+    if (!mounted) {
+      return;
+    }
+    setState(() {});
+    final userId = _userId;
+    if (userId == null) {
+      return;
+    }
+    _subscribeActionState(userId);
+  }
+
+  void _subscribeActionState(String userId) {
     switch (widget.content.buttonType) {
       case HomePageButtonType.reserve:
-        _reservationSubscription = _reservationService
-            .watchReservationId(
-                contentId: widget.content.id, userId: userId)
-            .listen((id) {
-          setState(() => _reservationId = id);
-        });
+        _listenReservationState(userId);
         break;
       case HomePageButtonType.order:
         _orderSubscription = _orderService
@@ -59,6 +85,16 @@ class _HomePageContentDetailPageState
         });
         break;
     }
+  }
+
+  void _listenReservationState(String userId) {
+    _reservationSubscription?.cancel();
+    _reservationSubscription = _reservationService
+        .watchReservationId(contentId: widget.content.id, userId: userId)
+        .listen((id) {
+      if (!mounted) return;
+      setState(() => _reservationId = id);
+    });
   }
 
   void _handleButtonTap(HomePageButtonType type) {
@@ -75,10 +111,13 @@ class _HomePageContentDetailPageState
           builder: (_) => HomePageReservationPage(content: widget.content),
         ),
       )
-          .then((_) {
-        // After returning, re-subscribe in case user logged in later.
-        if (_reservationSubscription == null) {
-          _subscribeActionState();
+          .then((result) {
+        final userId = _userId;
+        if (userId == null) {
+          return;
+        }
+        if (result == true || _reservationSubscription == null) {
+          _listenReservationState(userId);
         }
       });
       return;
@@ -96,6 +135,7 @@ class _HomePageContentDetailPageState
   void dispose() {
     _reservationSubscription?.cancel();
     _orderSubscription?.cancel();
+    _authSubscription?.cancel();
     _pageController.dispose();
     super.dispose();
   }
@@ -133,7 +173,8 @@ class _HomePageContentDetailPageState
 
   Future<void> _cancelReservation() async {
     final reservationId = _reservationId;
-    if (reservationId == null) return;
+    final userId = _userId;
+    if (reservationId == null || userId == null) return;
     final confirmed = await showDialog<bool>(
           context: context,
           builder: (context) => AlertDialog(
@@ -159,6 +200,12 @@ class _HomePageContentDetailPageState
     final messenger = ScaffoldMessenger.of(context);
     try {
       await _reservationService.cancelReservation(reservationId);
+      await _notificationService.createPersonalNotification(
+        userId: userId,
+        title: '予約を解除しました',
+        body: '${widget.content.title} の予約を解除しました。',
+        category: '予約',
+      );
       messenger.showSnackBar(
         const SnackBar(content: Text('予約を解除しました')),
       );
