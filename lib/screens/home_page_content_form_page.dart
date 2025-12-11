@@ -31,6 +31,7 @@ class _HomePageContentFormPageState extends State<HomePageContentFormPage> {
 
   bool _isSubmitting = false;
   late HomePageGenre _genre;
+  late HomePageButtonType _buttonType;
   DateTime? _eventDate;
   TimeOfDay? _startTime;
   TimeOfDay? _endTime;
@@ -40,6 +41,7 @@ class _HomePageContentFormPageState extends State<HomePageContentFormPage> {
     super.initState();
     final content = widget.content;
     _genre = content?.genre ?? HomePageGenre.sales;
+    _buttonType = content?.buttonType ?? HomePageButtonType.reserve;
     if (content != null) {
       _titleController.text = content.title;
       _bodyController.text = content.body;
@@ -260,6 +262,7 @@ class _HomePageContentFormPageState extends State<HomePageContentFormPage> {
           body: _bodyController.text.trim(),
           genre: _genre,
           images: newImages,
+          buttonType: _buttonType,
           price: price,
           eventDate: eventDate,
           startTimeLabel: startTimeLabel,
@@ -277,6 +280,7 @@ class _HomePageContentFormPageState extends State<HomePageContentFormPage> {
           retainedImageUrls: retainedUrls,
           newImages: newImages,
           previousImageUrls: widget.content!.imageUrls,
+          buttonType: _buttonType,
           price: price,
           eventDate: eventDate,
           startTimeLabel: startTimeLabel,
@@ -408,6 +412,25 @@ class _HomePageContentFormPageState extends State<HomePageContentFormPage> {
                   ],
                 ),
               ],
+              const SizedBox(height: 16),
+              DropdownButtonFormField<HomePageButtonType>(
+                value: _buttonType,
+                decoration: const InputDecoration(labelText: 'ボタンの種類'),
+                items: HomePageButtonType.values
+                    .map(
+                      (type) => DropdownMenuItem(
+                        value: type,
+                        child: Text(type.label),
+                      ),
+                    )
+                    .toList(),
+                onChanged: _isSubmitting
+                    ? null
+                    : (value) {
+                        if (value == null) return;
+                        setState(() => _buttonType = value);
+                      },
+              ),
               const SizedBox(height: 16),
               TextFormField(
                 controller: _bodyController,

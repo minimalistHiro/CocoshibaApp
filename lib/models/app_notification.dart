@@ -7,6 +7,7 @@ class AppNotification {
     required this.body,
     required this.category,
     required this.imageUrl,
+    required this.targetUserId,
     required this.createdAt,
   });
 
@@ -21,6 +22,7 @@ class AppNotification {
       body: data['body'] as String? ?? '',
       category: data['category'] as String? ?? '一般',
       imageUrl: data['imageUrl'] as String?,
+      targetUserId: data['targetUserId'] as String?,
       createdAt:
           timestamp is Timestamp ? timestamp.toDate() : null,
     );
@@ -31,5 +33,6 @@ class AppNotification {
   final String body;
   final String category;
   final String? imageUrl;
+  final String? targetUserId;
   final DateTime? createdAt;
 }

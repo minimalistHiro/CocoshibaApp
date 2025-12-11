@@ -24,20 +24,31 @@ class NotificationService {
           .doc(userId)
           .collection('notificationReads');
 
-  Stream<List<AppNotification>> watchNotifications() {
+  Stream<List<AppNotification>> watchNotifications({String? userId}) {
     return _notificationsRef
         .orderBy('createdAt', descending: true)
         .snapshots()
-        .map(
-          (snapshot) =>
-              snapshot.docs.map(AppNotification.fromDocument).toList(),
-        );
+        .map((snapshot) {
+      final notifications =
+          snapshot.docs.map(AppNotification.fromDocument).toList();
+      if (userId == null || userId.isEmpty) {
+        return notifications
+            .where((notification) => notification.targetUserId == null)
+            .toList();
+      }
+      return notifications
+          .where((notification) =>
+              notification.targetUserId == null ||
+              notification.targetUserId == userId)
+          .toList();
+    });
   }
 
   Future<void> createNotification({
     required String title,
     required String body,
     required String category,
+    String? targetUserId,
     Uint8List? imageBytes,
   }) async {
     final docRef = _notificationsRef.doc();
@@ -58,6 +69,7 @@ class NotificationService {
       'body': body,
       'category': category,
       'imageUrl': imageUrl,
+      'targetUserId': targetUserId,
       'createdAt': FieldValue.serverTimestamp(),
     });
   }
@@ -104,7 +116,7 @@ class NotificationService {
     }
 
     controller.onListen = () {
-      notificationSub = watchNotifications().listen(
+      notificationSub = watchNotifications(userId: userId).listen(
         (value) {
           notifications = value;
           emitUnreadState();

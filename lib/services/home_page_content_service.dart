@@ -35,6 +35,7 @@ class HomePageContentService {
     required String body,
     required HomePageGenre genre,
     required List<XFile> images,
+    required HomePageButtonType buttonType,
     int? price,
     DateTime? eventDate,
     String? startTimeLabel,
@@ -51,6 +52,7 @@ class HomePageContentService {
       'createdAt': FieldValue.serverTimestamp(),
       'updatedAt': FieldValue.serverTimestamp(),
       'price': genre == HomePageGenre.sales ? price : null,
+      'buttonType': buttonType.firestoreValue,
       'eventDate': genre == HomePageGenre.event && eventDate != null
           ? Timestamp.fromDate(eventDate)
           : null,
@@ -68,6 +70,7 @@ class HomePageContentService {
     required List<String> retainedImageUrls,
     required List<XFile> newImages,
     required List<String> previousImageUrls,
+    required HomePageButtonType buttonType,
     int? price,
     DateTime? eventDate,
     String? startTimeLabel,
@@ -87,6 +90,7 @@ class HomePageContentService {
       'imageUrls': mergedImageUrls,
       'updatedAt': FieldValue.serverTimestamp(),
       'price': genre == HomePageGenre.sales ? price : null,
+      'buttonType': buttonType.firestoreValue,
       'eventDate': genre == HomePageGenre.event && eventDate != null
           ? Timestamp.fromDate(eventDate)
           : null,

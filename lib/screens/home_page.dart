@@ -3,13 +3,16 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../models/calendar_event.dart';
+import '../models/home_page_content.dart';
 import '../services/event_service.dart';
 import '../services/firebase_auth_service.dart';
 import '../services/notification_service.dart';
+import '../services/home_page_content_service.dart';
 import '../widgets/point_card.dart';
 import 'menu_list_page.dart';
 import 'notification_page.dart';
 import 'point_history_page.dart';
+import 'home_page_content_detail_page.dart';
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
@@ -22,9 +25,12 @@ class _HomePageState extends State<HomePage> {
   final FirebaseAuthService _authService = FirebaseAuthService();
   final EventService _eventService = EventService();
   final NotificationService _notificationService = NotificationService();
+  final HomePageContentService _homePageContentService =
+      HomePageContentService();
   late Future<int> _pointsFuture;
   late final Stream<List<CalendarEvent>> _upcomingEventsStream;
   late final Stream<bool> _hasUnreadNotificationsStream;
+  late final Stream<List<HomePageContent>> _homePageContentsStream;
 
   @override
   void initState() {
@@ -33,6 +39,7 @@ class _HomePageState extends State<HomePage> {
     _upcomingEventsStream = _eventService.watchUpcomingEvents(limit: 5);
     _hasUnreadNotificationsStream = _notificationService
         .watchHasUnreadNotifications(_authService.currentUser?.uid);
+    _homePageContentsStream = _homePageContentService.watchContents();
   }
 
   void _showNotification(BuildContext context) {
@@ -296,6 +303,19 @@ class _HomePageState extends State<HomePage> {
               );
             },
           ),
+          const SizedBox(height: 32),
+          StreamBuilder<List<HomePageContent>>(
+            stream: _homePageContentsStream,
+            builder: (context, snapshot) {
+              final isLoading =
+                  snapshot.connectionState == ConnectionState.waiting;
+              final contents = snapshot.data ?? const <HomePageContent>[];
+              return _HomePageContentSection(
+                contents: contents,
+                isLoading: isLoading && contents.isEmpty,
+              );
+            },
+          ),
         ],
       ),
     );
@@ -504,6 +524,227 @@ class _ShortcutItem extends StatelessWidget {
               ),
             ],
           ),
+        ),
+      ),
+    );
+  }
+}
+
+class _HomePageContentSection extends StatelessWidget {
+  const _HomePageContentSection({
+    required this.contents,
+    required this.isLoading,
+  });
+
+  final List<HomePageContent> contents;
+  final bool isLoading;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    Widget child;
+    if (isLoading) {
+      child = const Padding(
+        padding: EdgeInsets.symmetric(vertical: 24),
+        child: Center(child: CircularProgressIndicator()),
+      );
+    } else if (contents.isEmpty) {
+      child = Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(24),
+        decoration: BoxDecoration(
+          color: Colors.grey.shade100,
+          borderRadius: BorderRadius.circular(24),
+        ),
+        child: Text(
+          'ホームページがまだ登録されていません',
+          style: theme.textTheme.bodyMedium
+              ?.copyWith(color: Colors.grey.shade600),
+        ),
+      );
+    } else {
+      child = _HomePageContentGrid(contents: contents);
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'ホームページ',
+          style: theme.textTheme.titleMedium?.copyWith(
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+        const SizedBox(height: 12),
+        child,
+      ],
+    );
+  }
+}
+
+class _HomePageContentGrid extends StatelessWidget {
+  const _HomePageContentGrid({required this.contents});
+
+  final List<HomePageContent> contents;
+
+  @override
+  Widget build(BuildContext context) {
+    return GridView.builder(
+      padding: EdgeInsets.zero,
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+        crossAxisCount: 2,
+        crossAxisSpacing: 16,
+        mainAxisSpacing: 16,
+        childAspectRatio: 0.75,
+      ),
+      itemCount: contents.length,
+      itemBuilder: (context, index) {
+        final content = contents[index];
+        return _HomePageContentCard(
+          content: content,
+          onTap: () {
+            Navigator.of(context).push(
+              MaterialPageRoute(
+                builder: (_) => HomePageContentDetailPage(content: content),
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+}
+
+class _HomePageContentCard extends StatelessWidget {
+  const _HomePageContentCard({
+    required this.content,
+    required this.onTap,
+  });
+
+  final HomePageContent content;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final metadata = _buildMetadata(content);
+    return Card(
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: onTap,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            AspectRatio(
+              aspectRatio: 1,
+              child: _HomePageContentImage(
+                imageUrl:
+                    content.imageUrls.isNotEmpty ? content.imageUrls.first : null,
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.all(12),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    content.title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: theme.textTheme.titleSmall?.copyWith(
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  if (metadata != null) ...[
+                    const SizedBox(height: 4),
+                    Text(
+                      metadata,
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: Colors.grey.shade700,
+                        fontWeight: FontWeight.w600,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  String? _buildMetadata(HomePageContent content) {
+    switch (content.genre) {
+      case HomePageGenre.sales:
+        final price = content.price;
+        if (price == null) return null;
+        return '¥${_formatNumber(price)}';
+      case HomePageGenre.event:
+        final date = content.eventDate;
+        if (date == null) return null;
+        final start = content.startTimeLabel ?? '--:--';
+        final end = content.endTimeLabel ?? '--:--';
+        return '${_formatDate(date)}  $start〜$end';
+      case HomePageGenre.news:
+        return null;
+    }
+  }
+
+  String _formatNumber(int value) {
+    final digits = value.toString().split('').reversed.toList();
+    final buffer = StringBuffer();
+    for (var i = 0; i < digits.length; i++) {
+      if (i != 0 && i % 3 == 0) {
+        buffer.write(',');
+      }
+      buffer.write(digits[i]);
+    }
+    return buffer.toString().split('').reversed.join();
+  }
+
+  String _formatDate(DateTime date) {
+    String twoDigits(int value) => value.toString().padLeft(2, '0');
+    return '${date.year}/${twoDigits(date.month)}/${twoDigits(date.day)}';
+  }
+}
+
+class _HomePageContentImage extends StatelessWidget {
+  const _HomePageContentImage({this.imageUrl});
+
+  final String? imageUrl;
+
+  @override
+  Widget build(BuildContext context) {
+    if (imageUrl == null || imageUrl!.isEmpty) {
+      return Container(
+        color: Colors.grey.shade200,
+        alignment: Alignment.center,
+        child: Icon(
+          Icons.image_outlined,
+          color: Colors.grey.shade500,
+        ),
+      );
+    }
+
+    return Image.network(
+      imageUrl!,
+      fit: BoxFit.cover,
+      loadingBuilder: (context, child, progress) {
+        if (progress == null) return child;
+        return const Center(child: CircularProgressIndicator());
+      },
+      errorBuilder: (_, __, ___) => Container(
+        color: Colors.grey.shade200,
+        alignment: Alignment.center,
+        child: Icon(
+          Icons.broken_image_outlined,
+          color: Colors.grey.shade500,
         ),
       ),
     );

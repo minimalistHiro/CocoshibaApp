@@ -57,6 +57,7 @@ class _NotificationPageState extends State<NotificationPage> {
 
   @override
   Widget build(BuildContext context) {
+    final userId = _authService.currentUser?.uid;
     return Scaffold(
       appBar: AppBar(
         title: const Text('お知らせ'),
@@ -68,7 +69,7 @@ class _NotificationPageState extends State<NotificationPage> {
         ],
       ),
       body: StreamBuilder<List<AppNotification>>(
-        stream: _notificationService.watchNotifications(),
+        stream: _notificationService.watchNotifications(userId: userId),
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {
             return const Center(child: CircularProgressIndicator());
