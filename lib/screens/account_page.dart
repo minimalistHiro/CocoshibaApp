@@ -11,6 +11,7 @@ import 'owner_settings_page.dart';
 import 'menu_management_page.dart';
 import 'profile_edit_page.dart';
 import 'support_help_page.dart';
+import 'home_screen_editor_page.dart';
 
 class AccountPage extends StatefulWidget {
   const AccountPage({super.key});
@@ -333,6 +334,17 @@ class _AccountPageState extends State<AccountPage> {
             ),
             const SizedBox(height: 16),
             _buildSectionHeader('管理者設定'),
+            _buildSettingCard(
+              context: context,
+              icon: Icons.dashboard_customize_outlined,
+              title: 'ホーム画面編集',
+              subtitle: 'ホームのページを追加・整理',
+              onTap: () => Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (_) => const HomeScreenEditorPage(),
+                ),
+              ),
+            ),
             _buildSettingCard(
               context: context,
               icon: Icons.event_busy_outlined,
