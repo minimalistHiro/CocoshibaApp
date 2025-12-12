@@ -544,34 +544,51 @@ class _ShortcutItem extends StatelessWidget {
 class _BookOrderButton extends StatelessWidget {
   const _BookOrderButton({required this.onTap});
 
+  static const _backgroundAssetPath =
+      'assets/images/book_order_button_bg.jpg';
+
   final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final borderRadius = BorderRadius.circular(32);
     return Material(
       elevation: 4,
-      borderRadius: BorderRadius.circular(32),
-      color: theme.colorScheme.secondary,
+      borderRadius: borderRadius,
+      clipBehavior: Clip.antiAlias,
       shadowColor: theme.colorScheme.secondary.withOpacity(0.4),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(32),
-        onTap: onTap,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 20),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              const Icon(Icons.auto_stories, color: Colors.white),
-              const SizedBox(width: 12),
-              Text(
-                '本の注文はこちら',
-                style: theme.textTheme.titleMedium?.copyWith(
-                  color: Colors.white,
-                  fontWeight: FontWeight.bold,
+      child: Ink(
+        decoration: BoxDecoration(
+          borderRadius: borderRadius,
+          image: DecorationImage(
+            image: const AssetImage(_backgroundAssetPath),
+            fit: BoxFit.cover,
+            colorFilter: ColorFilter.mode(
+              Colors.black.withOpacity(0.35),
+              BlendMode.darken,
+            ),
+          ),
+        ),
+        child: InkWell(
+          borderRadius: borderRadius,
+          onTap: onTap,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 20),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                const Icon(Icons.auto_stories, color: Colors.white),
+                const SizedBox(width: 12),
+                Text(
+                  '本の注文はこちら',
+                  style: theme.textTheme.titleMedium?.copyWith(
+                    color: Colors.white,
+                    fontWeight: FontWeight.bold,
+                  ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       ),

@@ -73,6 +73,7 @@ flutter:
     - assets/images/cocoshiba_logo.png
     - assets/images/cocoshiba_logo_g.png
     - assets/images/ココシバアプリアイコン.png
+    - assets/images/book_order_button_bg.jpg
 
   # An image asset can refer to one or more resolution-specific "variants", see
   # https://flutter.dev/to/resolution-aware-images

@@ -13,7 +13,7 @@ class BooksPage extends StatelessWidget {
         final name = (snapshot.data?['name'] as String?) ?? 'お客さま';
         return Center(
           child: Text(
-            '$name さんの本の画面（準備中）',
+            '本の画面（準備中）',
             style: Theme.of(context).textTheme.titleMedium,
           ),
         );
