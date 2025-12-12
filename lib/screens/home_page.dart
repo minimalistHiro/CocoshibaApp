@@ -14,6 +14,8 @@ import 'menu_list_page.dart';
 import 'notification_page.dart';
 import 'point_history_page.dart';
 import 'home_page_content_detail_page.dart';
+import 'event_detail_page.dart';
+import 'events_page.dart';
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
@@ -171,6 +173,22 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
+  void _openEventsPage() {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => const EventsPage(),
+      ),
+    );
+  }
+
+  void _openEventDetail(CalendarEvent event) {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => EventDetailPage(event: event),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return SafeArea(
@@ -222,9 +240,9 @@ class _HomePageState extends State<HomePage> {
                 children: [
                   Expanded(
                     child: _ShortcutItem(
-                      icon: Icons.qr_code,
-                      label: 'QRコード',
-                      onTap: () => _showShortcutMessage('QRコード'),
+                      icon: Icons.event_available_outlined,
+                      label: 'イベント',
+                      onTap: _openEventsPage,
                     ),
                   ),
                   Expanded(
@@ -307,7 +325,10 @@ class _HomePageState extends State<HomePage> {
                 children: [
                   const _UpcomingEventsHeader(),
                   const SizedBox(height: 12),
-                  _UpcomingEventCarousel(events: events),
+                  _UpcomingEventCarousel(
+                    events: events,
+                    onEventTap: _openEventDetail,
+                  ),
                 ],
               );
             },
@@ -349,9 +370,13 @@ class _UpcomingEventsHeader extends StatelessWidget {
 }
 
 class _UpcomingEventCarousel extends StatefulWidget {
-  const _UpcomingEventCarousel({required this.events});
+  const _UpcomingEventCarousel({
+    required this.events,
+    required this.onEventTap,
+  });
 
   final List<CalendarEvent> events;
+  final ValueChanged<CalendarEvent> onEventTap;
 
   @override
   State<_UpcomingEventCarousel> createState() => _UpcomingEventCarouselState();
@@ -423,72 +448,80 @@ class _UpcomingEventCarouselState extends State<_UpcomingEventCarousel> {
 
           return Padding(
             padding: const EdgeInsets.symmetric(horizontal: 4),
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(28),
-              child: Stack(
-                fit: StackFit.expand,
-                children: [
-                  Image.network(
-                    imageUrl,
-                    fit: BoxFit.cover,
-                    loadingBuilder: (context, child, loadingProgress) {
-                      if (loadingProgress == null) return child;
-                      return const Center(child: CircularProgressIndicator());
-                    },
-                    errorBuilder: (context, error, stackTrace) {
-                      return Container(
-                        color: Colors.grey.shade200,
-                        alignment: Alignment.center,
-                        child: const Icon(Icons.image_not_supported_outlined,
-                            size: 48, color: Colors.black38),
-                      );
-                    },
-                  ),
-                  Positioned.fill(
-                    child: DecoratedBox(
-                      decoration: BoxDecoration(
-                        gradient: LinearGradient(
-                          begin: Alignment.topCenter,
-                          end: Alignment.bottomCenter,
-                          colors: [
-                            Colors.transparent,
-                            Colors.black.withOpacity(0.2),
-                            Colors.black.withOpacity(0.6),
-                          ],
+            child: GestureDetector(
+              onTap: () => widget.onEventTap(event),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(28),
+                child: Stack(
+                  fit: StackFit.expand,
+                  children: [
+                    Image.network(
+                      imageUrl,
+                      fit: BoxFit.cover,
+                      loadingBuilder: (context, child, loadingProgress) {
+                        if (loadingProgress == null) return child;
+                        return const Center(child: CircularProgressIndicator());
+                      },
+                      errorBuilder: (context, error, stackTrace) {
+                        return Container(
+                          color: Colors.grey.shade200,
+                          alignment: Alignment.center,
+                          child: const Icon(
+                            Icons.image_not_supported_outlined,
+                            size: 48,
+                            color: Colors.black38,
+                          ),
+                        );
+                      },
+                    ),
+                    Positioned.fill(
+                      child: DecoratedBox(
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(
+                            begin: Alignment.topCenter,
+                            end: Alignment.bottomCenter,
+                            colors: [
+                              Colors.transparent,
+                              Colors.black.withOpacity(0.2),
+                              Colors.black.withOpacity(0.6),
+                            ],
+                          ),
                         ),
                       ),
                     ),
-                  ),
-                  Positioned(
-                    left: 16,
-                    right: 16,
-                    bottom: 20,
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          dateLabel,
-                          style:
-                              Theme.of(context).textTheme.bodySmall?.copyWith(
-                                    color: Colors.white,
-                                    fontWeight: FontWeight.w600,
-                                  ),
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          event.name,
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                          style:
-                              Theme.of(context).textTheme.titleMedium?.copyWith(
-                                    color: Colors.white,
-                                    fontWeight: FontWeight.bold,
-                                  ),
-                        ),
-                      ],
+                    Positioned(
+                      left: 16,
+                      right: 16,
+                      bottom: 20,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            dateLabel,
+                            style:
+                                Theme.of(context).textTheme.bodySmall?.copyWith(
+                                      color: Colors.white,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            event.name,
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            style: Theme.of(context)
+                                .textTheme
+                                .titleMedium
+                                ?.copyWith(
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                          ),
+                        ],
+                      ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
             ),
           );
@@ -544,8 +577,7 @@ class _ShortcutItem extends StatelessWidget {
 class _BookOrderButton extends StatelessWidget {
   const _BookOrderButton({required this.onTap});
 
-  static const _backgroundAssetPath =
-      'assets/images/book_order_button_bg.jpg';
+  static const _backgroundAssetPath = 'assets/images/book_order_button_bg.jpg';
 
   final VoidCallback onTap;
 
@@ -561,11 +593,11 @@ class _BookOrderButton extends StatelessWidget {
       child: Ink(
         decoration: BoxDecoration(
           borderRadius: borderRadius,
-          image: DecorationImage(
-            image: const AssetImage(_backgroundAssetPath),
+          image: const DecorationImage(
+            image: ExactAssetImage(_backgroundAssetPath),
             fit: BoxFit.cover,
             colorFilter: ColorFilter.mode(
-              Colors.black.withOpacity(0.35),
+              Colors.black54,
               BlendMode.darken,
             ),
           ),
@@ -624,8 +656,8 @@ class _HomePageContentSection extends StatelessWidget {
         ),
         child: Text(
           'ホームページがまだ登録されていません',
-          style: theme.textTheme.bodyMedium
-              ?.copyWith(color: Colors.grey.shade600),
+          style:
+              theme.textTheme.bodyMedium?.copyWith(color: Colors.grey.shade600),
         ),
       );
     } else {
@@ -707,8 +739,9 @@ class _HomePageContentCard extends StatelessWidget {
             AspectRatio(
               aspectRatio: 1,
               child: _HomePageContentImage(
-                imageUrl:
-                    content.imageUrls.isNotEmpty ? content.imageUrls.first : null,
+                imageUrl: content.imageUrls.isNotEmpty
+                    ? content.imageUrls.first
+                    : null,
               ),
             ),
             Padding(

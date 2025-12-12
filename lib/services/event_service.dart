@@ -18,8 +18,12 @@ class EventService {
 
   CollectionReference<Map<String, dynamic>> get _eventsRef =>
       _firestore.collection('events');
-  CollectionReference<Map<String, dynamic>> _reservationsRef(String eventId) =>
-      _eventsRef.doc(eventId).collection('reservations');
+  CollectionReference<Map<String, dynamic>> _userReservationsRef(
+          String userId) =>
+      _firestore
+          .collection('users')
+          .doc(userId)
+          .collection('event_reservations');
 
   Future<void> createEvent({
     required String name,
@@ -187,7 +191,7 @@ class EventService {
     required String eventId,
     required String userId,
   }) async {
-    final doc = await _reservationsRef(eventId).doc(userId).get();
+    final doc = await _userReservationsRef(userId).doc(eventId).get();
     return doc.exists;
   }
 
@@ -195,7 +199,7 @@ class EventService {
     required CalendarEvent event,
     required String userId,
   }) async {
-    await _reservationsRef(event.id).doc(userId).set({
+    await _userReservationsRef(userId).doc(event.id).set({
       'userId': userId,
       'eventId': event.id,
       'eventName': event.name,
@@ -209,12 +213,35 @@ class EventService {
     required String eventId,
     required String userId,
   }) async {
-    await _reservationsRef(eventId).doc(userId).delete();
+    await _userReservationsRef(userId).doc(eventId).delete();
   }
 
   Stream<int> watchReservationCount(String eventId) {
-    return _reservationsRef(eventId)
+    return _firestore
+        .collectionGroup('event_reservations')
+        .where('eventId', isEqualTo: eventId)
         .snapshots()
         .map((snapshot) => snapshot.size);
+  }
+
+  Stream<List<CalendarEvent>> watchReservedEvents(String userId) {
+    return _userReservationsRef(userId)
+        .orderBy('eventStartDateTime')
+        .snapshots()
+        .asyncMap((snapshot) async {
+      if (snapshot.docs.isEmpty) return const <CalendarEvent>[];
+      final eventIds = snapshot.docs.map((doc) => doc.id).toSet();
+      if (eventIds.isEmpty) return const <CalendarEvent>[];
+
+      final futures = eventIds.map((id) => _eventsRef.doc(id).get());
+      final docs = await Future.wait(futures);
+      final events = docs
+          .where((doc) => doc.exists)
+          .map(CalendarEvent.fromDocument)
+          .where((event) => !event.isClosedDay)
+          .toList(growable: false);
+      events.sort((a, b) => a.startDateTime.compareTo(b.startDateTime));
+      return events;
+    });
   }
 }
