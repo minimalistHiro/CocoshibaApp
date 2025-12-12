@@ -22,6 +22,8 @@ class _HomePageReservationPageState extends State<HomePageReservationPage> {
       HomePageReservationService();
   final NotificationService _notificationService = NotificationService();
   bool _isSaving = false;
+  int _quantity = 1;
+  static const int _maxQuantity = 10;
 
   @override
   void initState() {
@@ -75,13 +77,15 @@ class _HomePageReservationPageState extends State<HomePageReservationPage> {
         reservedDate: _selectedDate,
         userId: user.uid,
         pickupDate: _selectedDate,
+        quantity: _quantity,
       );
       final pickupLabel = _formatDate(_selectedDate);
+      final completionLabel = _formatDate(DateTime.now());
       await _notificationService.createPersonalNotification(
         userId: user.uid,
         title: '予約が完了しました',
         body:
-            '${widget.content.title} の予約を受け付けました。\n受け取り日: $pickupLabel',
+            '${widget.content.title} の予約を受け付けました。\n受け取り日: $pickupLabel\n予約完了日: $completionLabel\n個数: $_quantity',
         category: '予約',
       );
       if (!mounted) return;
@@ -107,12 +111,12 @@ class _HomePageReservationPageState extends State<HomePageReservationPage> {
       appBar: AppBar(
         title: Text('${widget.content.title}の予約'),
       ),
-      body: Padding(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
+          body: Padding(
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
               '受け取り日を選択してください',
               style: Theme.of(context)
                   .textTheme
@@ -122,16 +126,47 @@ class _HomePageReservationPageState extends State<HomePageReservationPage> {
             const SizedBox(height: 12),
             Expanded(
               child: Card(
-                child: CalendarDatePicker(
-                  initialDate: _selectedDate,
-                  firstDate: DateTime(now.year, now.month, now.day),
-                  lastDate: DateTime(now.year + 1),
-                  onDateChanged: (date) {
-                    setState(() => _selectedDate = date);
-                  },
-                ),
+              child: CalendarDatePicker(
+                initialDate: _selectedDate,
+                firstDate: DateTime(now.year, now.month, now.day),
+                lastDate: DateTime(now.year + 1),
+                onDateChanged: (date) {
+                  setState(() => _selectedDate = date);
+                },
               ),
             ),
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              Text(
+                '個数',
+                style: Theme.of(context)
+                    .textTheme
+                    .bodyLarge
+                    ?.copyWith(fontWeight: FontWeight.w600),
+              ),
+              const SizedBox(width: 16),
+              DropdownButton<int>(
+                value: _quantity,
+                items: List.generate(
+                  _maxQuantity,
+                  (index) => index + 1,
+                )
+                    .map(
+                      (value) => DropdownMenuItem(
+                        value: value,
+                        child: Text('$value'),
+                      ),
+                    )
+                    .toList(),
+                onChanged: (value) {
+                  if (value == null) return;
+                  setState(() => _quantity = value);
+                },
+              ),
+            ],
+          ),
             const SizedBox(height: 16),
             Center(
               child: FilledButton.icon(
