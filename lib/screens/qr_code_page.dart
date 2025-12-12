@@ -3,6 +3,8 @@ import 'package:mobile_scanner/mobile_scanner.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 
 import '../services/firebase_auth_service.dart';
+import '../services/owner_settings_service.dart';
+import 'point_payment_page.dart';
 
 class QrCodePage extends StatefulWidget {
   const QrCodePage({super.key});
@@ -13,6 +15,7 @@ class QrCodePage extends StatefulWidget {
 
 class _QrCodePageState extends State<QrCodePage> {
   final FirebaseAuthService _authService = FirebaseAuthService();
+  final OwnerSettingsService _ownerSettingsService = OwnerSettingsService();
   final MobileScannerController _controller = MobileScannerController(
     detectionSpeed: DetectionSpeed.noDuplicates,
     facing: CameraFacing.back,
@@ -20,6 +23,7 @@ class _QrCodePageState extends State<QrCodePage> {
   final TextEditingController _manualInputController = TextEditingController();
 
   String? _scanResult;
+  String? _ownerStoreId;
 
   @override
   void dispose() {
@@ -28,26 +32,79 @@ class _QrCodePageState extends State<QrCodePage> {
     super.dispose();
   }
 
+  @override
+  void initState() {
+    super.initState();
+    _loadOwnerStoreId();
+  }
+
+  Future<void> _loadOwnerStoreId() async {
+    try {
+      final info = await _ownerSettingsService.fetchContactInfo();
+      final storeId = info?.storeId.trim();
+      if (!mounted) return;
+      setState(() {
+        _ownerStoreId =
+            (storeId != null && storeId.isNotEmpty) ? storeId : null;
+      });
+      _maybeOpenPointPayment(_scanResult);
+    } catch (_) {
+      // Ignore errors – the scanner will continue to work without auto-navigation.
+    }
+  }
+
   void _handleDetection(BarcodeCapture capture) {
     final barcode = capture.barcodes.firstWhere((code) => code.rawValue != null,
         orElse: () => capture.barcodes.first);
-    final value = barcode.rawValue;
+    final value = barcode.rawValue?.trim();
     if (value == null || value == _scanResult) return;
 
+    final shouldOpenPayment = _matchesOwnerStoreId(value);
     setState(() {
       _scanResult = value;
     });
+    if (shouldOpenPayment) {
+      _openPointPayment(value);
+    }
   }
 
   void _applyManualInput() {
     final manualValue = _manualInputController.text.trim();
     if (manualValue.isEmpty) return;
+    final shouldOpenPayment = _matchesOwnerStoreId(manualValue);
     setState(() {
       _scanResult = manualValue;
     });
+    if (shouldOpenPayment) {
+      _openPointPayment(manualValue);
+    }
   }
 
   bool get _hasResult => (_scanResult?.isNotEmpty ?? false);
+
+  bool _matchesOwnerStoreId(String value) {
+    final target = _ownerStoreId;
+    if (target == null || target.isEmpty) return false;
+    return value.trim() == target;
+  }
+
+  void _maybeOpenPointPayment(String? code) {
+    if (code == null || code.isEmpty) return;
+    if (_matchesOwnerStoreId(code)) {
+      _openPointPayment(code);
+    }
+  }
+
+  void _openPointPayment(String code) {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => PointPaymentPage(
+          storeId: _ownerStoreId ?? code,
+          scannedValue: code,
+        ),
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
