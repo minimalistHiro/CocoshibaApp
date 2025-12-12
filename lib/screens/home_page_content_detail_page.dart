@@ -6,8 +6,7 @@ import 'package:flutter/material.dart';
 import '../models/home_page_content.dart';
 import '../services/firebase_auth_service.dart';
 import '../services/home_page_order_service.dart';
-import '../services/home_page_reservation_service.dart';
-import '../services/notification_service.dart';
+import 'home_page_reservation_list_page.dart';
 import 'home_page_reservation_page.dart';
 
 class HomePageContentDetailPage extends StatefulWidget {
@@ -25,15 +24,11 @@ class _HomePageContentDetailPageState
   late final PageController _pageController;
   int _currentPage = 0;
   final FirebaseAuthService _authService = FirebaseAuthService();
-  final HomePageReservationService _reservationService =
-      HomePageReservationService();
   final HomePageOrderService _orderService = HomePageOrderService();
-  final NotificationService _notificationService = NotificationService();
-  StreamSubscription<String?>? _reservationSubscription;
+  late final Stream<bool> _ownerStream;
   StreamSubscription<String?>? _orderSubscription;
   StreamSubscription<User?>? _authSubscription;
   String? _userId;
-  String? _reservationId;
   String? _orderId;
   bool _isOrderProcessing = false;
 
@@ -51,15 +46,16 @@ class _HomePageContentDetailPageState
       _userId = newUserId;
       _handleAuthUserChanged();
     });
+    _ownerStream = _authService.watchCurrentUserProfile().map(
+          (profile) =>
+              (profile?['isOwner'] == true) || (profile?['isSubOwner'] == true),
+        );
     _handleAuthUserChanged();
   }
 
   void _handleAuthUserChanged() {
-    _reservationSubscription?.cancel();
     _orderSubscription?.cancel();
-    _reservationSubscription = null;
     _orderSubscription = null;
-    _reservationId = null;
     _orderId = null;
     if (!mounted) {
       return;
@@ -73,53 +69,22 @@ class _HomePageContentDetailPageState
   }
 
   void _subscribeActionState(String userId) {
-    switch (widget.content.buttonType) {
-      case HomePageButtonType.reserve:
-        _listenReservationState(userId);
-        break;
-      case HomePageButtonType.order:
-        _orderSubscription = _orderService
-            .watchOrderId(contentId: widget.content.id, userId: userId)
-            .listen((id) {
-          setState(() => _orderId = id);
-        });
-        break;
+    if (widget.content.buttonType == HomePageButtonType.order) {
+      _orderSubscription = _orderService
+          .watchOrderId(contentId: widget.content.id, userId: userId)
+          .listen((id) {
+        setState(() => _orderId = id);
+      });
     }
-  }
-
-  void _listenReservationState(String userId) {
-    _reservationSubscription?.cancel();
-    _reservationSubscription = _reservationService
-        .watchReservationId(contentId: widget.content.id, userId: userId)
-        .listen((id) {
-      if (!mounted) return;
-      setState(() => _reservationId = id);
-    });
   }
 
   void _handleButtonTap(HomePageButtonType type) {
     if (type == HomePageButtonType.reserve) {
-      if (_reservationId != null) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('すでに予約済みです。解除すると再度予約できます。')),
-        );
-        return;
-      }
-      Navigator.of(context)
-          .push(
+      Navigator.of(context).push(
         MaterialPageRoute(
           builder: (_) => HomePageReservationPage(content: widget.content),
         ),
-      )
-          .then((result) {
-        final userId = _userId;
-        if (userId == null) {
-          return;
-        }
-        if (result == true || _reservationSubscription == null) {
-          _listenReservationState(userId);
-        }
-      });
+      );
       return;
     }
     if (_orderId != null || _isOrderProcessing) {
@@ -131,9 +96,16 @@ class _HomePageContentDetailPageState
     _placeOrder();
   }
 
+  void _openReservationList() {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => HomePageReservationListPage(content: widget.content),
+      ),
+    );
+  }
+
   @override
   void dispose() {
-    _reservationSubscription?.cancel();
     _orderSubscription?.cancel();
     _authSubscription?.cancel();
     _pageController.dispose();
@@ -168,89 +140,6 @@ class _HomePageContentDetailPageState
       if (mounted) {
         setState(() => _isOrderProcessing = false);
       }
-    }
-  }
-
-  Future<void> _cancelReservation() async {
-    final reservationId = _reservationId;
-    final userId = _userId;
-    if (reservationId == null || userId == null) return;
-    final confirmed = await showDialog<bool>(
-          context: context,
-          builder: (context) => AlertDialog(
-            title: const Text('確認'),
-            content: const Text('この予約を解除しますか？'),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.of(context).pop(false),
-                child: const Text('キャンセル'),
-              ),
-              TextButton(
-                onPressed: () => Navigator.of(context).pop(true),
-                child: const Text(
-                  '解除する',
-                  style: TextStyle(color: Colors.red),
-                ),
-              ),
-            ],
-          ),
-        ) ??
-        false;
-    if (!confirmed) return;
-    final messenger = ScaffoldMessenger.of(context);
-    try {
-      await _reservationService.cancelReservation(reservationId);
-      await _notificationService.createPersonalNotification(
-        userId: userId,
-        title: '予約を解除しました',
-        body: '${widget.content.title} の予約を解除しました。',
-        category: '予約',
-      );
-      messenger.showSnackBar(
-        const SnackBar(content: Text('予約を解除しました')),
-      );
-    } catch (_) {
-      messenger.showSnackBar(
-        const SnackBar(content: Text('予約の解除に失敗しました')),
-      );
-    }
-  }
-
-  Future<void> _cancelOrder() async {
-    final orderId = _orderId;
-    if (orderId == null) return;
-    final confirmed = await showDialog<bool>(
-          context: context,
-          builder: (context) => AlertDialog(
-            title: const Text('確認'),
-            content: const Text('この注文を取り消しますか？'),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.of(context).pop(false),
-                child: const Text('キャンセル'),
-              ),
-              TextButton(
-                onPressed: () => Navigator.of(context).pop(true),
-                child: const Text(
-                  '取り消す',
-                  style: TextStyle(color: Colors.red),
-                ),
-              ),
-            ],
-          ),
-        ) ??
-        false;
-    if (!confirmed) return;
-    final messenger = ScaffoldMessenger.of(context);
-    try {
-      await _orderService.cancelOrder(orderId);
-      messenger.showSnackBar(
-        const SnackBar(content: Text('注文を取り消しました')),
-      );
-    } catch (_) {
-      messenger.showSnackBar(
-        const SnackBar(content: Text('注文の取り消しに失敗しました')),
-      );
     }
   }
 
@@ -343,6 +232,31 @@ class _HomePageContentDetailPageState
               ),
             ),
           const SizedBox(height: 24),
+          StreamBuilder<bool>(
+            stream: _ownerStream,
+            builder: (context, snapshot) {
+              if (snapshot.data != true) {
+                return const SizedBox.shrink();
+              }
+              return Column(
+                children: [
+                  SizedBox(
+                    width: double.infinity,
+                    child: OutlinedButton.icon(
+                      style: OutlinedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                        shape: const StadiumBorder(),
+                      ),
+                      onPressed: _openReservationList,
+                      icon: const Icon(Icons.list_alt),
+                      label: const Text('予約者一覧'),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                ],
+              );
+            },
+          ),
           Text(
             content.title,
             style: Theme.of(context).textTheme.headlineSmall?.copyWith(
@@ -382,41 +296,20 @@ class _HomePageContentDetailPageState
           const SizedBox(height: 24),
           FilledButton(
             onPressed: (_isOrderProcessing &&
-                        content.buttonType == HomePageButtonType.order) ||
-                    _actionAlreadyCompleted(content.buttonType)
+                        content.buttonType == HomePageButtonType.order)
                 ? null
                 : () => _handleButtonTap(content.buttonType),
             child: _buildPrimaryButtonChild(content.buttonType),
           ),
-          if (_actionAlreadyCompleted(content.buttonType)) ...[
-            const SizedBox(height: 8),
-            TextButton(
-              onPressed: content.buttonType == HomePageButtonType.reserve
-                  ? _cancelReservation
-                  : _cancelOrder,
-              child: Text(content.buttonType == HomePageButtonType.reserve
-                  ? '予約を解除する'
-                  : '注文を取り消す'),
-            ),
-          ],
         ],
       ),
     );
   }
 
-  bool _actionAlreadyCompleted(HomePageButtonType type) {
-    switch (type) {
-      case HomePageButtonType.reserve:
-        return _reservationId != null;
-      case HomePageButtonType.order:
-        return _orderId != null;
-    }
-  }
-
   Widget _buildPrimaryButtonChild(HomePageButtonType type) {
     switch (type) {
       case HomePageButtonType.reserve:
-        return Text(_reservationId != null ? '予約済み' : type.label);
+        return Text(type.label);
       case HomePageButtonType.order:
         if (_isOrderProcessing) {
           return const SizedBox(

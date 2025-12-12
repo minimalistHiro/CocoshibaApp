@@ -21,11 +21,13 @@ class _NotificationPageState extends State<NotificationPage> {
   final NotificationService _notificationService = NotificationService();
   final FirebaseAuthService _authService = FirebaseAuthService();
 
+  late final Stream<Map<String, dynamic>?> _profileStream;
   late final Stream<Set<String>> _readNotificationIdsStream;
 
   @override
   void initState() {
     super.initState();
+    _profileStream = _authService.watchCurrentUserProfile();
     _readNotificationIdsStream = _notificationService
         .watchReadNotificationIds(_authService.currentUser?.uid);
   }
@@ -58,78 +60,89 @@ class _NotificationPageState extends State<NotificationPage> {
   @override
   Widget build(BuildContext context) {
     final userId = _authService.currentUser?.uid;
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('お知らせ'),
-        actions: [
-          IconButton(
-            onPressed: _openCreate,
-            icon: const Icon(Icons.add),
+    return StreamBuilder<Map<String, dynamic>?>(
+      stream: _profileStream,
+      builder: (context, profileSnapshot) {
+        final profile = profileSnapshot.data;
+        final isOwner = (profile?['isOwner'] == true) ||
+            (profile?['isSubOwner'] == true);
+        return Scaffold(
+          appBar: AppBar(
+            title: const Text('お知らせ'),
+            actions: [
+              IconButton(
+                onPressed: _openCreate,
+                icon: const Icon(Icons.add),
+              ),
+            ],
           ),
-        ],
-      ),
-      body: StreamBuilder<List<AppNotification>>(
-        stream: _notificationService.watchNotifications(userId: userId),
-        builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.waiting) {
-            return const Center(child: CircularProgressIndicator());
-          }
-          if (snapshot.hasError) {
-            return Center(
-              child: Padding(
-                padding: const EdgeInsets.all(24),
-                child: Text(
-                  'お知らせの取得に失敗しました。\n時間をおいて再度お試しください。',
-                  textAlign: TextAlign.center,
-                  style: Theme.of(context).textTheme.bodyLarge,
-                ),
-              ),
-            );
-          }
-          final notifications = snapshot.data ?? [];
-          if (notifications.isEmpty) {
-            return Center(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  const Icon(Icons.notifications_none, size: 48),
-                  const SizedBox(height: 12),
-                  Text(
-                    'まだお知らせがありません',
-                    style: Theme.of(context).textTheme.titleMedium,
+          body: StreamBuilder<List<AppNotification>>(
+            stream: _notificationService.watchNotifications(
+              userId: userId,
+              includeOwnerNotifications: isOwner,
+            ),
+            builder: (context, snapshot) {
+              if (snapshot.connectionState == ConnectionState.waiting) {
+                return const Center(child: CircularProgressIndicator());
+              }
+              if (snapshot.hasError) {
+                return Center(
+                  child: Padding(
+                    padding: const EdgeInsets.all(24),
+                    child: Text(
+                      'お知らせの取得に失敗しました。\n時間をおいて再度お試しください。',
+                      textAlign: TextAlign.center,
+                      style: Theme.of(context).textTheme.bodyLarge,
+                    ),
                   ),
-                  const SizedBox(height: 8),
-                  Text(
-                    '右上のプラスボタンから\n最初のお知らせを作成しましょう',
-                    textAlign: TextAlign.center,
-                    style: Theme.of(context).textTheme.bodyMedium,
+                );
+              }
+              final notifications = snapshot.data ?? [];
+              if (notifications.isEmpty) {
+                return Center(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(Icons.notifications_none, size: 48),
+                      const SizedBox(height: 12),
+                      Text(
+                        'まだお知らせがありません',
+                        style: Theme.of(context).textTheme.titleMedium,
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        '右上のプラスボタンから\n最初のお知らせを作成しましょう',
+                        textAlign: TextAlign.center,
+                        style: Theme.of(context).textTheme.bodyMedium,
+                      ),
+                    ],
                   ),
-                ],
-              ),
-            );
-          }
-          return StreamBuilder<Set<String>>(
-            stream: _readNotificationIdsStream,
-            builder: (context, readSnapshot) {
-              final readIds = readSnapshot.data ?? const <String>{};
-              return ListView.separated(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-                itemCount: notifications.length,
-                separatorBuilder: (_, __) => const SizedBox(height: 12),
-                itemBuilder: (context, index) {
-                  final notification = notifications[index];
-                  return _NotificationCard(
-                    notification: notification,
-                    onTap: () => _openDetail(notification),
-                    isRead: readIds.contains(notification.id),
+                );
+              }
+              return StreamBuilder<Set<String>>(
+                stream: _readNotificationIdsStream,
+                builder: (context, readSnapshot) {
+                  final readIds = readSnapshot.data ?? const <String>{};
+                  return ListView.separated(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 20, vertical: 16),
+                    itemCount: notifications.length,
+                    separatorBuilder: (_, __) => const SizedBox(height: 12),
+                    itemBuilder: (context, index) {
+                      final notification = notifications[index];
+                      return _NotificationCard(
+                        notification: notification,
+                        onTap: () => _openDetail(notification),
+                        isRead: readIds.contains(notification.id),
+                      );
+                    },
                   );
                 },
               );
             },
-          );
-        },
-      ),
+          ),
+        );
+      },
     );
   }
 }

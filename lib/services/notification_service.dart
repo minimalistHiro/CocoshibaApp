@@ -20,14 +20,22 @@ class NotificationService {
       _firestore.collection('notifications');
   CollectionReference<Map<String, dynamic>> _personalNotificationsRef(
           String userId) =>
-      _firestore.collection('users').doc(userId).collection('personalNotifications');
+      _firestore
+          .collection('users')
+          .doc(userId)
+          .collection('personalNotifications');
   CollectionReference<Map<String, dynamic>> _userReadsRef(String userId) =>
       _firestore
           .collection('users')
           .doc(userId)
           .collection('notificationReads');
+  CollectionReference<Map<String, dynamic>> get _ownerNotificationsRef =>
+      _firestore.collection('owner_notifications');
 
-  Stream<List<AppNotification>> watchNotifications({String? userId}) {
+  Stream<List<AppNotification>> watchNotifications({
+    String? userId,
+    bool includeOwnerNotifications = false,
+  }) {
     final baseStream = _notificationsRef
         .orderBy('createdAt', descending: true)
         .snapshots()
@@ -47,6 +55,12 @@ class NotificationService {
     });
 
     if (userId == null || userId.isEmpty) {
+      if (includeOwnerNotifications) {
+        return _mergeNotificationStreams(
+          baseStream,
+          watchOwnerNotifications(),
+        );
+      }
       return baseStream;
     }
 
@@ -56,7 +70,15 @@ class NotificationService {
         .map((snapshot) =>
             snapshot.docs.map(AppNotification.fromDocument).toList());
 
-    return _combineNotificationStreams(baseStream, personalStream);
+    final combinedStream =
+        _combineNotificationStreams(baseStream, personalStream);
+    if (includeOwnerNotifications) {
+      return _mergeNotificationStreams(
+        combinedStream,
+        watchOwnerNotifications(),
+      );
+    }
+    return combinedStream;
   }
 
   Future<void> createNotification({
@@ -234,6 +256,62 @@ class NotificationService {
         return stopListening();
       }
       return null;
+    };
+
+    return controller.stream;
+  }
+
+  Stream<List<AppNotification>> watchOwnerNotifications() {
+    return _ownerNotificationsRef
+        .orderBy('createdAt', descending: true)
+        .snapshots()
+        .map((snapshot) =>
+            snapshot.docs.map(AppNotification.fromDocument).toList());
+  }
+
+  Stream<List<AppNotification>> _mergeNotificationStreams(
+    Stream<List<AppNotification>> baseStream,
+    Stream<List<AppNotification>> additionalStream,
+  ) {
+    final controller = StreamController<List<AppNotification>>.broadcast();
+    List<AppNotification> baseNotifications = const [];
+    List<AppNotification> additionalNotifications = const [];
+    StreamSubscription<List<AppNotification>>? baseSub;
+    StreamSubscription<List<AppNotification>>? additionalSub;
+
+    void emit() {
+      final merged = <AppNotification>[
+        ...baseNotifications,
+        ...additionalNotifications,
+      ];
+      merged.sort((a, b) {
+        final aTime = a.createdAt ?? DateTime.fromMillisecondsSinceEpoch(0);
+        final bTime = b.createdAt ?? DateTime.fromMillisecondsSinceEpoch(0);
+        return bTime.compareTo(aTime);
+      });
+      controller.add(merged);
+    }
+
+    controller.onListen = () {
+      baseSub = baseStream.listen(
+        (value) {
+          baseNotifications = value;
+          emit();
+        },
+        onError: controller.addError,
+      );
+      additionalSub = additionalStream.listen(
+        (value) {
+          additionalNotifications = value;
+          emit();
+        },
+        onError: controller.addError,
+      );
+    };
+
+    controller.onCancel = () async {
+      await baseSub?.cancel();
+      await additionalSub?.cancel();
     };
 
     return controller.stream;
