@@ -2,6 +2,8 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
 import '../models/calendar_event.dart';
+import '../services/event_favorite_service.dart';
+import '../services/event_interest_service.dart';
 import '../services/event_service.dart';
 import 'edit_event_page.dart';
 
@@ -18,11 +20,19 @@ class _EventDetailPageState extends State<EventDetailPage> {
   late final PageController _pageController;
   int _currentIndex = 0;
   final EventService _eventService = EventService();
+  final EventInterestService _interestService = EventInterestService();
+  final EventFavoriteService _favoriteService = EventFavoriteService();
   late CalendarEvent _event;
   bool _isDeleting = false;
   bool _hasReservation = false;
   bool _isReservationLoading = true;
   bool _isReservationProcessing = false;
+  bool _isInterested = false;
+  bool _isFavorite = false;
+  bool _isInterestLoading = true;
+  bool _isFavoriteLoading = true;
+  bool _isInterestProcessing = false;
+  bool _isFavoriteProcessing = false;
   late final Stream<int> _reservationCountStream;
 
   @override
@@ -32,6 +42,7 @@ class _EventDetailPageState extends State<EventDetailPage> {
     _event = widget.event;
     _reservationCountStream = _eventService.watchReservationCount(_event.id);
     _loadReservationStatus();
+    _loadReactionStatuses();
   }
 
   @override
@@ -167,6 +178,17 @@ class _EventDetailPageState extends State<EventDetailPage> {
                               event.name,
                               style: theme.textTheme.headlineSmall
                                   ?.copyWith(fontWeight: FontWeight.bold),
+                            ),
+                            const SizedBox(height: 16),
+                            _ReactionButtons(
+                              isInterested: _isInterested,
+                              isFavorite: _isFavorite,
+                              isInterestBusy:
+                                  _isInterestLoading || _isInterestProcessing,
+                              isFavoriteBusy:
+                                  _isFavoriteLoading || _isFavoriteProcessing,
+                              onTapInterest: _onInterestPressed,
+                              onTapFavorite: _onFavoritePressed,
                             ),
                             const SizedBox(height: 8),
                             _InfoRow(
@@ -314,6 +336,49 @@ class _EventDetailPageState extends State<EventDetailPage> {
     }
   }
 
+  Future<void> _loadReactionStatuses() async {
+    if (mounted) {
+      setState(() {
+        _isInterestLoading = true;
+        _isFavoriteLoading = true;
+      });
+    }
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) {
+      if (!mounted) return;
+      setState(() {
+        _isInterestLoading = false;
+        _isFavoriteLoading = false;
+        _isInterested = false;
+        _isFavorite = false;
+      });
+      return;
+    }
+
+    try {
+      final results = await Future.wait([
+        _interestService.isInterested(userId: user.uid, eventId: _event.id),
+        _favoriteService.isFavorite(userId: user.uid, event: _event),
+      ]);
+      if (!mounted) return;
+      setState(() {
+        _isInterested = results[0];
+        _isFavorite = results[1];
+        _isInterestLoading = false;
+        _isFavoriteLoading = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _isInterestLoading = false;
+        _isFavoriteLoading = false;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('リアクション状態の取得に失敗しました: $e')),
+      );
+    }
+  }
+
   Future<void> _openEditEvent() async {
     final updatedEvent = await Navigator.of(context).push<CalendarEvent>(
       MaterialPageRoute(
@@ -322,6 +387,7 @@ class _EventDetailPageState extends State<EventDetailPage> {
     );
     if (updatedEvent != null && mounted) {
       setState(() => _event = updatedEvent);
+      _loadReactionStatuses();
     }
   }
 
@@ -406,6 +472,80 @@ class _EventDetailPageState extends State<EventDetailPage> {
     }
   }
 
+  Future<void> _onInterestPressed() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('気になる機能を使うにはログインしてください')),
+      );
+      return;
+    }
+
+    setState(() => _isInterestProcessing = true);
+    try {
+      await _interestService.toggleInterest(
+        userId: user.uid,
+        event: _event,
+        isInterested: _isInterested,
+      );
+      if (!mounted) return;
+      setState(() => _isInterested = !_isInterested);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            _isInterested ? '気になるに追加しました' : '気になるを解除しました',
+          ),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('気になるの更新に失敗しました: $e')),
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _isInterestProcessing = false);
+      }
+    }
+  }
+
+  Future<void> _onFavoritePressed() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('お気に入り機能を使うにはログインしてください')),
+      );
+      return;
+    }
+
+    setState(() => _isFavoriteProcessing = true);
+    try {
+      await _favoriteService.toggleFavorite(
+        userId: user.uid,
+        event: _event,
+        isFavorite: _isFavorite,
+      );
+      if (!mounted) return;
+      setState(() => _isFavorite = !_isFavorite);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            _isFavorite ? 'お気に入りに追加しました' : 'お気に入りを解除しました',
+          ),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('お気に入りの更新に失敗しました: $e')),
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _isFavoriteProcessing = false);
+      }
+    }
+  }
+
   Future<void> _confirmDelete() async {
     final shouldDelete = await showDialog<bool>(
           context: context,
@@ -480,6 +620,104 @@ class _InfoRow extends StatelessWidget {
           ),
         ),
       ],
+    );
+  }
+}
+
+class _ReactionButtons extends StatelessWidget {
+  const _ReactionButtons({
+    required this.isInterested,
+    required this.isFavorite,
+    required this.isInterestBusy,
+    required this.isFavoriteBusy,
+    required this.onTapInterest,
+    required this.onTapFavorite,
+  });
+
+  final bool isInterested;
+  final bool isFavorite;
+  final bool isInterestBusy;
+  final bool isFavoriteBusy;
+  final VoidCallback onTapInterest;
+  final VoidCallback onTapFavorite;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Expanded(
+          child: _ReactionButton(
+            label: '気になる',
+            icon: isInterested ? Icons.favorite : Icons.favorite_border,
+            color: Colors.pinkAccent,
+            isBusy: isInterestBusy,
+            onPressed: isInterestBusy ? null : onTapInterest,
+          ),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: _ReactionButton(
+            label: 'お気に入り',
+            icon: isFavorite ? Icons.star : Icons.star_border,
+            color: Colors.amber.shade600,
+            isBusy: isFavoriteBusy,
+            onPressed: isFavoriteBusy ? null : onTapFavorite,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _ReactionButton extends StatelessWidget {
+  const _ReactionButton({
+    required this.label,
+    required this.icon,
+    required this.color,
+    required this.isBusy,
+    required this.onPressed,
+  });
+
+  final String label;
+  final IconData icon;
+  final Color color;
+  final bool isBusy;
+  final VoidCallback? onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    return OutlinedButton(
+      style: OutlinedButton.styleFrom(
+        padding: const EdgeInsets.symmetric(vertical: 12),
+        foregroundColor: color,
+        side: BorderSide(color: color.withOpacity(0.6)),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+      ),
+      onPressed: onPressed,
+      child: isBusy
+          ? SizedBox(
+              width: 16,
+              height: 16,
+              child: CircularProgressIndicator(
+                strokeWidth: 2,
+                valueColor: AlwaysStoppedAnimation<Color>(color),
+              ),
+            )
+          : Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(icon, color: color),
+                const SizedBox(width: 4),
+                Text(
+                  label,
+                  style: Theme.of(context)
+                      .textTheme
+                      .labelLarge
+                      ?.copyWith(color: color, fontWeight: FontWeight.bold),
+                ),
+              ],
+            ),
     );
   }
 }

@@ -17,15 +17,18 @@ class ExistingEventService {
   CollectionReference<Map<String, dynamic>> get _existingEventsRef =>
       _firestore.collection('existing_events');
 
-  Future<void> createExistingEvent({
+  Future<String> createExistingEvent({
     required String name,
     required String organizer,
     required String content,
     required List<XFile> images,
     required int colorValue,
     required int capacity,
+    String? existingEventId,
   }) async {
-    final docRef = _existingEventsRef.doc();
+    final docRef = (existingEventId != null && existingEventId.isNotEmpty)
+        ? _existingEventsRef.doc(existingEventId)
+        : _existingEventsRef.doc();
     final List<String> imageUrls = [];
 
     for (final image in images) {
@@ -55,6 +58,7 @@ class ExistingEventService {
       'capacity': capacity,
       'createdAt': FieldValue.serverTimestamp(),
     });
+    return docRef.id;
   }
 
   Future<void> updateExistingEvent({

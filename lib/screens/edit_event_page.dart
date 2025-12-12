@@ -1,9 +1,12 @@
 import 'dart:io';
+import 'dart:math';
 
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:http/http.dart' as http;
 
 import '../models/calendar_event.dart';
+import '../services/existing_event_service.dart';
 import '../services/event_service.dart';
 
 class EditEventPage extends StatefulWidget {
@@ -35,6 +38,7 @@ class _EditEventPageState extends State<EditEventPage> {
 
   final _formKey = GlobalKey<FormState>();
   final _nameController = TextEditingController();
+  final _existingEventIdController = TextEditingController();
   final _organizerController = TextEditingController();
   final _dateController = TextEditingController();
   final _startTimeController = TextEditingController();
@@ -43,6 +47,7 @@ class _EditEventPageState extends State<EditEventPage> {
 
   final ImagePicker _picker = ImagePicker();
   final EventService _eventService = EventService();
+  final ExistingEventService _existingEventService = ExistingEventService();
   DateTime? _selectedDate;
   TimeOfDay? _startTime;
   TimeOfDay? _endTime;
@@ -52,6 +57,7 @@ class _EditEventPageState extends State<EditEventPage> {
   final List<String> _removedImageUrls = [];
   final List<XFile> _newImages = [];
   bool _isSubmitting = false;
+  bool _isSavingExistingEvent = false;
 
   TimeOfDay _roundToFiveMinutes(TimeOfDay time) {
     const interval = 5;
@@ -71,6 +77,7 @@ class _EditEventPageState extends State<EditEventPage> {
     _nameController.text = event.name;
     _organizerController.text = event.organizer;
     _contentController.text = event.content;
+    _existingEventIdController.text = event.existingEventId ?? '';
     _existingImageUrls = List<String>.from(event.imageUrls);
 
     _selectedDate = DateTime(
@@ -104,6 +111,7 @@ class _EditEventPageState extends State<EditEventPage> {
   @override
   void dispose() {
     _nameController.dispose();
+    _existingEventIdController.dispose();
     _organizerController.dispose();
     _dateController.dispose();
     _startTimeController.dispose();
@@ -230,6 +238,10 @@ class _EditEventPageState extends State<EditEventPage> {
       return;
     }
 
+    final existingEventIdText = _existingEventIdController.text.trim();
+    final existingEventId =
+        existingEventIdText.isEmpty ? null : existingEventIdText;
+
     setState(() => _isSubmitting = true);
     try {
       final updatedImageUrls = await _eventService.updateEvent(
@@ -244,6 +256,7 @@ class _EditEventPageState extends State<EditEventPage> {
         remainingImageUrls: _existingImageUrls,
         newImages: _newImages,
         removedImageUrls: _removedImageUrls,
+        existingEventId: existingEventId,
       );
 
       final updatedEvent = CalendarEvent(
@@ -257,6 +270,7 @@ class _EditEventPageState extends State<EditEventPage> {
         colorValue: _colorPalette[_selectedColorIndex].value,
         capacity: _selectedCapacity,
         isClosedDay: widget.event.isClosedDay,
+        existingEventId: existingEventId,
       );
 
       if (!mounted) return;
@@ -291,6 +305,14 @@ class _EditEventPageState extends State<EditEventPage> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
+              TextFormField(
+                controller: _existingEventIdController,
+                decoration: const InputDecoration(
+                  labelText: '既存イベントID (任意)',
+                  helperText: '既存イベントのUIDを紐付ける場合に入力します',
+                ),
+              ),
+              const SizedBox(height: 16),
               TextFormField(
                 controller: _nameController,
                 decoration: const InputDecoration(labelText: 'イベント名'),
@@ -490,6 +512,19 @@ class _EditEventPageState extends State<EditEventPage> {
                 ],
               ),
               const SizedBox(height: 24),
+              FilledButton.tonal(
+                onPressed: _isSubmitting || _isSavingExistingEvent
+                    ? null
+                    : _saveAsExistingEvent,
+                child: _isSavingExistingEvent
+                    ? const SizedBox(
+                        width: 20,
+                        height: 20,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Text('既存イベントに保存'),
+              ),
+              const SizedBox(height: 12),
               FilledButton(
                 onPressed: _isSubmitting ? null : _submit,
                 child: _isSubmitting
@@ -505,6 +540,116 @@ class _EditEventPageState extends State<EditEventPage> {
         ),
       ),
     );
+  }
+
+  Future<void> _saveAsExistingEvent() async {
+    if (!_formKey.currentState!.validate()) return;
+    final shouldSave = await showDialog<bool>(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: const Text('既存イベントに保存'),
+            content: const Text('この内容で既存イベントとして保存しますか？'),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(false),
+                child: const Text('キャンセル'),
+              ),
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(true),
+                child: const Text('保存する'),
+              ),
+            ],
+          ),
+        ) ??
+        false;
+
+    if (!shouldSave) return;
+
+    var existingEventId = _existingEventIdController.text.trim();
+    if (existingEventId.isEmpty) {
+      existingEventId = _generateRandomExistingEventId();
+      _existingEventIdController.text = existingEventId;
+    }
+
+    setState(() => _isSavingExistingEvent = true);
+    try {
+      const maxImages = 5;
+      final urlsToDownload = _existingImageUrls.take(maxImages).toList();
+      final downloadedImages = await _downloadImagesFromUrls(urlsToDownload);
+      final images = <XFile>[...downloadedImages];
+      final remainingSlots = maxImages - images.length;
+      if (remainingSlots > 0) {
+        images.addAll(_newImages.take(remainingSlots));
+      }
+      final savedId = await _existingEventService.createExistingEvent(
+        name: _nameController.text.trim(),
+        organizer: _organizerController.text.trim(),
+        content: _contentController.text.trim(),
+        images: images,
+        colorValue: _colorPalette[_selectedColorIndex].value,
+        capacity: _selectedCapacity,
+        existingEventId: existingEventId,
+      );
+      if (!mounted) return;
+      if (savedId != existingEventId) {
+        _existingEventIdController.text = savedId;
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('既存イベントとして保存しました')),
+      );
+      Navigator.of(context).pop();
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('既存イベントへの保存に失敗しました: $e')),
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _isSavingExistingEvent = false);
+      }
+    }
+  }
+
+  Future<List<XFile>> _downloadImagesFromUrls(List<String> urls) async {
+    final client = http.Client();
+    final List<XFile> downloaded = [];
+    try {
+      for (final url in urls) {
+        final uri = Uri.tryParse(url);
+        if (uri == null) continue;
+        try {
+          final response = await client.get(uri);
+          if (response.statusCode == HttpStatus.ok) {
+            final mimeType = response.headers['content-type'];
+            final name = uri.pathSegments.isNotEmpty
+                ? uri.pathSegments.last
+                : 'existing_${DateTime.now().millisecondsSinceEpoch}.jpg';
+            downloaded.add(
+              XFile.fromData(
+                response.bodyBytes,
+                mimeType: mimeType,
+                name: name,
+              ),
+            );
+          }
+        } catch (_) {
+          // ignore and continue downloading other images
+        }
+      }
+    } finally {
+      client.close();
+    }
+    return downloaded;
+  }
+
+  String _generateRandomExistingEventId({int length = 20}) {
+    const chars =
+        'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+    final random = Random.secure();
+    return List.generate(
+      length,
+      (_) => chars[random.nextInt(chars.length)],
+    ).join();
   }
 }
 

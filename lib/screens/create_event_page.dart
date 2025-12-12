@@ -1,8 +1,8 @@
 import 'dart:io';
 
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:http/http.dart' as http;
 
 import '../models/existing_event.dart';
 import '../services/event_service.dart';
@@ -32,6 +32,7 @@ class _CreateEventPageState extends State<CreateEventPage> {
   ];
   final _formKey = GlobalKey<FormState>();
   final _nameController = TextEditingController();
+  final _existingEventIdController = TextEditingController();
   final _organizerController = TextEditingController();
   final _dateController = TextEditingController();
   final _startTimeController = TextEditingController();
@@ -72,6 +73,7 @@ class _CreateEventPageState extends State<CreateEventPage> {
   @override
   void dispose() {
     _nameController.dispose();
+    _existingEventIdController.dispose();
     _organizerController.dispose();
     _dateController.dispose();
     _startTimeController.dispose();
@@ -191,6 +193,10 @@ class _CreateEventPageState extends State<CreateEventPage> {
       return;
     }
 
+    final existingEventIdText = _existingEventIdController.text.trim();
+    final existingEventId =
+        existingEventIdText.isEmpty ? null : existingEventIdText;
+
     setState(() => _isSubmitting = true);
     try {
       await _eventService.createEvent(
@@ -202,6 +208,7 @@ class _CreateEventPageState extends State<CreateEventPage> {
         images: _images,
         colorValue: _colorPalette[_selectedColorIndex].value,
         capacity: _selectedCapacity,
+        existingEventId: existingEventId,
       );
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -246,6 +253,7 @@ class _CreateEventPageState extends State<CreateEventPage> {
       _nameController.text = event.name;
       _organizerController.text = event.organizer;
       _contentController.text = event.content;
+      _existingEventIdController.text = event.id;
       if (colorIndex >= 0) {
         _selectedColorIndex = colorIndex;
       }
@@ -282,24 +290,22 @@ class _CreateEventPageState extends State<CreateEventPage> {
   }
 
   Future<List<XFile>> _downloadExistingEventImages(List<String> urls) async {
-    final HttpClient httpClient = HttpClient();
+    final client = http.Client();
     final List<XFile> downloaded = [];
     try {
       for (final url in urls) {
         final uri = Uri.tryParse(url);
         if (uri == null) continue;
         try {
-          final request = await httpClient.getUrl(uri);
-          final response = await request.close();
+          final response = await client.get(uri);
           if (response.statusCode == HttpStatus.ok) {
-            final bytes = await consolidateHttpClientResponseBytes(response);
-            final mimeType = response.headers.contentType?.mimeType;
+            final mimeType = response.headers['content-type'];
             final name = uri.pathSegments.isNotEmpty
                 ? uri.pathSegments.last
                 : 'existing_${DateTime.now().millisecondsSinceEpoch}.jpg';
             downloaded.add(
               XFile.fromData(
-                bytes,
+                response.bodyBytes,
                 mimeType: mimeType,
                 name: name,
               ),
@@ -310,7 +316,7 @@ class _CreateEventPageState extends State<CreateEventPage> {
         }
       }
     } finally {
-      httpClient.close(force: true);
+      client.close();
     }
     return downloaded;
   }
@@ -332,6 +338,14 @@ class _CreateEventPageState extends State<CreateEventPage> {
                 onPressed: _openExistingEventPicker,
                 icon: const Icon(Icons.history),
                 label: const Text('既存のイベントを呼び出す'),
+              ),
+              const SizedBox(height: 16),
+              TextFormField(
+                controller: _existingEventIdController,
+                decoration: const InputDecoration(
+                  labelText: '既存イベントID (任意)',
+                  helperText: '既存イベントのUIDを紐付ける場合に入力します',
+                ),
               ),
               const SizedBox(height: 24),
               TextFormField(

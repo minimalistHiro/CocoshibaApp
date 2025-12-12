@@ -1,3 +1,4 @@
+import 'dart:math';
 import 'dart:typed_data';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -34,9 +35,12 @@ class EventService {
     required List<XFile> images,
     required int colorValue,
     required int capacity,
+    String? existingEventId,
   }) async {
     final docRef = _eventsRef.doc();
     final List<String> imageUrls = [];
+    final String? resolvedExistingEventId =
+        _resolveExistingEventId(existingEventId, docRef.id.length);
 
     for (final image in images) {
       final Uint8List bytes = await image.readAsBytes();
@@ -60,6 +64,10 @@ class EventService {
       'colorValue': colorValue,
       'capacity': capacity,
       'createdAt': FieldValue.serverTimestamp(),
+      'existingEventId':
+          resolvedExistingEventId != null && resolvedExistingEventId.isNotEmpty
+              ? resolvedExistingEventId
+              : null,
     });
   }
 
@@ -75,6 +83,7 @@ class EventService {
     required List<String> remainingImageUrls,
     required List<XFile> newImages,
     required List<String> removedImageUrls,
+    String? existingEventId,
   }) async {
     final List<String> imageUrls = List<String>.from(remainingImageUrls);
 
@@ -106,6 +115,10 @@ class EventService {
       'colorValue': colorValue,
       'capacity': capacity,
       'updatedAt': FieldValue.serverTimestamp(),
+      'existingEventId':
+          existingEventId != null && existingEventId.isNotEmpty
+              ? existingEventId
+              : null,
     });
 
     for (final url in removedImageUrls) {
@@ -243,5 +256,22 @@ class EventService {
       events.sort((a, b) => a.startDateTime.compareTo(b.startDateTime));
       return events;
     });
+  }
+
+  String? _resolveExistingEventId(String? existingEventId, int fallbackLength) {
+    if (existingEventId != null && existingEventId.isNotEmpty) {
+      return existingEventId;
+    }
+    return _generateRandomId(fallbackLength);
+  }
+
+  String _generateRandomId(int length) {
+    const chars =
+        'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+    final random = Random.secure();
+    return List.generate(
+      length,
+      (_) => chars[random.nextInt(chars.length)],
+    ).join();
   }
 }

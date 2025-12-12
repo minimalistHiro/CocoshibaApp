@@ -50,4 +50,12 @@ class EventInterestService {
     }
     return addInterest(userId: userId, event: event);
   }
+
+  Future<bool> isInterested({
+    required String userId,
+    required String eventId,
+  }) async {
+    final doc = await _interestRef(userId).doc(eventId).get();
+    return doc.exists;
+  }
 }

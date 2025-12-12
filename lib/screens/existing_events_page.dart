@@ -35,6 +35,46 @@ class _ExistingEventsPageState extends State<ExistingEventsPage> {
     return '$organizer / $capacity';
   }
 
+  Widget _buildEventCard(ExistingEvent event) {
+    final imageUrl = event.imageUrls.isNotEmpty ? event.imageUrls.first : null;
+    return Card(
+      child: ListTile(
+        onTap: () => _openEdit(event),
+        leading: _ExistingEventThumbnail(
+          imageUrl: imageUrl,
+          color: event.color,
+        ),
+        title: Text(
+          event.name.isEmpty ? '無題のイベント' : event.name,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+        ),
+        subtitle: Text(
+          _buildSubtitle(event),
+          maxLines: 2,
+        ),
+        trailing: PopupMenuButton<_ExistingEventAction>(
+          onSelected: (action) {
+            switch (action) {
+              case _ExistingEventAction.edit:
+                _openEdit(event);
+                break;
+            }
+          },
+          itemBuilder: (context) => const [
+            PopupMenuItem(
+              value: _ExistingEventAction.edit,
+              child: ListTile(
+                leading: Icon(Icons.edit_outlined),
+                title: Text('編集'),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -66,30 +106,12 @@ class _ExistingEventsPageState extends State<ExistingEventsPage> {
                   }
 
                   return ListView.separated(
-                    padding: const EdgeInsets.symmetric(vertical: 8),
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
                     itemCount: events.length,
-                    separatorBuilder: (_, __) => const Divider(height: 0),
-                    itemBuilder: (context, index) {
-                      final event = events[index];
-                      return ListTile(
-                        leading: CircleAvatar(
-                          backgroundColor: event.color.withOpacity(0.2),
-                          child: Icon(Icons.event_note, color: event.color),
-                        ),
-                        title: Text(
-                          event.name.isEmpty ? '無題のイベント' : event.name,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                        subtitle: Text(
-                          _buildSubtitle(event),
-                          maxLines: 2,
-                        ),
-                        isThreeLine: true,
-                        trailing: const Icon(Icons.chevron_right),
-                        onTap: () => _openEdit(event),
-                      );
-                    },
+                    separatorBuilder: (_, __) => const SizedBox(height: 8),
+                    itemBuilder: (context, index) =>
+                        _buildEventCard(events[index]),
                   );
                 },
               ),
@@ -130,3 +152,45 @@ class _StateMessage extends StatelessWidget {
     );
   }
 }
+
+class _ExistingEventThumbnail extends StatelessWidget {
+  const _ExistingEventThumbnail({this.imageUrl, required this.color});
+
+  final String? imageUrl;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(8),
+      child: SizedBox(
+        width: 56,
+        height: 56,
+        child: AspectRatio(
+          aspectRatio: 1,
+          child: imageUrl == null || imageUrl!.isEmpty
+              ? Container(
+                  color: color.withOpacity(0.15),
+                  child: Icon(
+                    Icons.event_note,
+                    color: color,
+                  ),
+                )
+              : Image.network(
+                  imageUrl!,
+                  fit: BoxFit.cover,
+                  errorBuilder: (_, __, ___) => Container(
+                    color: color.withOpacity(0.15),
+                    child: Icon(
+                      Icons.broken_image_outlined,
+                      color: color,
+                    ),
+                  ),
+                ),
+        ),
+      ),
+    );
+  }
+}
+
+enum _ExistingEventAction { edit }
