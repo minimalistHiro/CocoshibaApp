@@ -1,9 +1,14 @@
+import 'dart:async';
+
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 
 import '../services/firebase_auth_service.dart';
 import '../services/owner_settings_service.dart';
+import 'point_earned_page.dart';
+import 'point_grant_page.dart';
 import 'point_payment_page.dart';
 
 class QrCodePage extends StatefulWidget {
@@ -14,6 +19,7 @@ class QrCodePage extends StatefulWidget {
 }
 
 class _QrCodePageState extends State<QrCodePage> {
+  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   final FirebaseAuthService _authService = FirebaseAuthService();
   final OwnerSettingsService _ownerSettingsService = OwnerSettingsService();
   final MobileScannerController _controller = MobileScannerController(
@@ -21,12 +27,16 @@ class _QrCodePageState extends State<QrCodePage> {
     facing: CameraFacing.back,
   );
   final TextEditingController _manualInputController = TextEditingController();
+  StreamSubscription<DocumentSnapshot<Map<String, dynamic>>>?
+      _roleSubscription;
 
   String? _scanResult;
   String? _ownerStoreId;
+  bool _canGrantPoints = false;
 
   @override
   void dispose() {
+    _roleSubscription?.cancel();
     _controller.dispose();
     _manualInputController.dispose();
     super.dispose();
@@ -35,7 +45,29 @@ class _QrCodePageState extends State<QrCodePage> {
   @override
   void initState() {
     super.initState();
+    _listenOwnerRole();
     _loadOwnerStoreId();
+  }
+
+  void _listenOwnerRole() {
+    final uid = _authService.currentUser?.uid;
+    if (uid == null) {
+      setState(() => _canGrantPoints = false);
+      return;
+    }
+    _roleSubscription?.cancel();
+    _roleSubscription = _firestore.collection('users').doc(uid).snapshots().listen(
+      (snapshot) {
+        if (!mounted) return;
+        final data = snapshot.data();
+        final isOwner = data?['isOwner'] == true;
+        setState(() => _canGrantPoints = isOwner);
+      },
+      onError: (_) {
+        if (!mounted) return;
+        setState(() => _canGrantPoints = false);
+      },
+    );
   }
 
   Future<void> _loadOwnerStoreId() async {
@@ -59,24 +91,28 @@ class _QrCodePageState extends State<QrCodePage> {
     final value = barcode.rawValue?.trim();
     if (value == null || value == _scanResult) return;
 
-    final shouldOpenPayment = _matchesOwnerStoreId(value);
     setState(() {
       _scanResult = value;
     });
-    if (shouldOpenPayment) {
-      _openPointPayment(value);
-    }
+    _handleScannedValue(value);
   }
 
   void _applyManualInput() {
     final manualValue = _manualInputController.text.trim();
     if (manualValue.isEmpty) return;
-    final shouldOpenPayment = _matchesOwnerStoreId(manualValue);
     setState(() {
       _scanResult = manualValue;
     });
-    if (shouldOpenPayment) {
-      _openPointPayment(manualValue);
+    _handleScannedValue(manualValue);
+  }
+
+  void _handleScannedValue(String value) {
+    if (_matchesOwnerStoreId(value)) {
+      _openPointPayment(value);
+    } else if (_canGrantPoints) {
+      _openPointGrant(value);
+    } else {
+      _showGrantNotAllowedMessage();
     }
   }
 
@@ -103,6 +139,20 @@ class _QrCodePageState extends State<QrCodePage> {
           scannedValue: code,
         ),
       ),
+    );
+  }
+
+  void _openPointGrant(String userId) {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => PointGrantPage(targetUserId: userId),
+      ),
+    );
+  }
+
+  void _showGrantNotAllowedMessage() {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('ポイント付与はオーナーのみ利用できます')),
     );
   }
 
@@ -281,17 +331,119 @@ class _ScanTab extends StatelessWidget {
   }
 }
 
-class _MyQrTab extends StatelessWidget {
+class _MyQrTab extends StatefulWidget {
   const _MyQrTab({required this.authService});
 
   final FirebaseAuthService authService;
 
   @override
+  State<_MyQrTab> createState() => _MyQrTabState();
+}
+
+class _MyQrTabState extends State<_MyQrTab> {
+  StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? _historySubscription;
+  String? _listeningUid;
+  String? _lastHandledHistoryId;
+  bool _capturedInitialSnapshot = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _ensureHistoryListener();
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _ensureHistoryListener();
+  }
+
+  @override
+  void didUpdateWidget(covariant _MyQrTab oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.authService != widget.authService) {
+      _ensureHistoryListener(forceRestart: true);
+    }
+  }
+
+  void _ensureHistoryListener({bool forceRestart = false}) {
+    final uid = widget.authService.currentUser?.uid;
+    if (uid == null) {
+      _historySubscription?.cancel();
+      _historySubscription = null;
+      _listeningUid = null;
+      _lastHandledHistoryId = null;
+      _capturedInitialSnapshot = false;
+      return;
+    }
+    if (!forceRestart && _historySubscription != null && _listeningUid == uid) {
+      return;
+    }
+    _historySubscription?.cancel();
+    _listeningUid = uid;
+    _lastHandledHistoryId = null;
+    _capturedInitialSnapshot = false;
+    _historySubscription = FirebaseFirestore.instance
+        .collection('users')
+        .doc(uid)
+        .collection('pointHistories')
+        .orderBy('createdAt', descending: true)
+        .limit(1)
+        .snapshots()
+        .listen((snapshot) {
+      if (!mounted) return;
+      if (!_capturedInitialSnapshot) {
+        _capturedInitialSnapshot = true;
+        _lastHandledHistoryId =
+            snapshot.docs.isNotEmpty ? snapshot.docs.first.id : null;
+        return;
+      }
+      if (snapshot.docs.isEmpty) {
+        _lastHandledHistoryId = null;
+        return;
+      }
+      final doc = snapshot.docs.first;
+      if (doc.id == _lastHandledHistoryId) {
+        return;
+      }
+      _lastHandledHistoryId = doc.id;
+      final points = _parsePoints(doc.data()['points']);
+      if (points > 0) {
+        _openPointEarned(points);
+      }
+    });
+  }
+
+  int _parsePoints(dynamic value) {
+    if (value is int) return value;
+    if (value is num) return value.toInt();
+    if (value is String) {
+      return int.tryParse(value) ?? 0;
+    }
+    return 0;
+  }
+
+  void _openPointEarned(int points) {
+    if (!mounted) return;
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => PointEarnedPage(points: points),
+      ),
+    );
+  }
+
+  @override
+  void dispose() {
+    _historySubscription?.cancel();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     return StreamBuilder<Map<String, dynamic>?>(
-      stream: authService.watchCurrentUserProfile(),
+      stream: widget.authService.watchCurrentUserProfile(),
       builder: (context, _) {
-        final uid = authService.currentUser?.uid;
+        final uid = widget.authService.currentUser?.uid;
         if (uid == null) {
           return Center(
             child: Text(
