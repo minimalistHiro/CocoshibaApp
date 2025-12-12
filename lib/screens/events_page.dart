@@ -46,14 +46,13 @@ class _EventsPageState extends State<EventsPage> {
       _reservedEventsStream =
           Stream<List<CalendarEvent>>.value(const <CalendarEvent>[]);
       _interestIdsStream = Stream<Set<String>>.value(const <String>{});
-      _favoriteRefsStream =
-          Stream<List<FavoriteEventReference>>.value(const <FavoriteEventReference>[]);
+      _favoriteRefsStream = Stream<List<FavoriteEventReference>>.value(
+          const <FavoriteEventReference>[]);
       _favoriteIdsStream = Stream<Set<String>>.value(const <String>{});
     } else {
       _reservedEventsStream = _eventService.watchReservedEvents(_userId!);
       _interestIdsStream = _interestService.watchInterestedEventIds(_userId!);
-      _favoriteRefsStream =
-          _favoriteService.watchFavoriteReferences(_userId!);
+      _favoriteRefsStream = _favoriteService.watchFavoriteReferences(_userId!);
       _favoriteIdsStream = _favoriteRefsStream.map((refs) {
         final ids = <String>{};
         for (final ref in refs) {
@@ -159,8 +158,7 @@ class _EventsPageState extends State<EventsPage> {
     );
   }
 
-  Future<void> _toggleFavorite(
-      CalendarEvent event, bool isFavorite) async {
+  Future<void> _toggleFavorite(CalendarEvent event, bool isFavorite) async {
     final userId = _userId;
     if (userId == null) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -174,8 +172,7 @@ class _EventsPageState extends State<EventsPage> {
         event: event,
         isFavorite: isFavorite,
       );
-      final message =
-          isFavorite ? 'お気に入りを解除しました' : 'お気に入りに追加しました';
+      final message = isFavorite ? 'お気に入りを解除しました' : 'お気に入りに追加しました';
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(message)),
@@ -205,8 +202,7 @@ class _EventsPageState extends State<EventsPage> {
         existingEvent: existingEvent,
         isFavorite: isFavorite,
       );
-      final message =
-          isFavorite ? 'お気に入りを解除しました' : 'お気に入りに追加しました';
+      final message = isFavorite ? 'お気に入りを解除しました' : 'お気に入りに追加しました';
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(message)),
@@ -218,7 +214,6 @@ class _EventsPageState extends State<EventsPage> {
       );
     }
   }
-
 }
 
 class _InterestedEventsTab extends StatelessWidget {
@@ -505,9 +500,7 @@ class _ExistingEventsTab extends StatelessWidget {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          event.organizer.isEmpty
-                              ? '主催者未設定'
-                              : event.organizer,
+                          event.organizer.isEmpty ? '主催者未設定' : event.organizer,
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                         ),
@@ -567,7 +560,7 @@ class _ExistingEventThumbnail extends StatelessWidget {
     );
     if (imageUrl == null || imageUrl!.isEmpty) return placeholder;
     return ClipRRect(
-      borderRadius: BorderRadius.circular(8),
+      borderRadius: BorderRadius.circular(4),
       child: SizedBox(
         width: 56,
         height: 56,
@@ -642,8 +635,8 @@ class _EventListView extends StatelessWidget {
               existingEventIds,
             );
             return Card(
-              shape:
-                  RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(20)),
               clipBehavior: Clip.antiAlias,
               child: InkWell(
                 onTap: () => onTapEvent(event),
@@ -671,7 +664,8 @@ class _EventListView extends StatelessWidget {
                                       style: Theme.of(context)
                                           .textTheme
                                           .titleMedium
-                                          ?.copyWith(fontWeight: FontWeight.bold),
+                                          ?.copyWith(
+                                              fontWeight: FontWeight.bold),
                                     ),
                                     const SizedBox(height: 4),
                                     Text(
@@ -679,7 +673,8 @@ class _EventListView extends StatelessWidget {
                                       style: Theme.of(context)
                                           .textTheme
                                           .bodySmall
-                                          ?.copyWith(color: Colors.grey.shade600),
+                                          ?.copyWith(
+                                              color: Colors.grey.shade600),
                                     ),
                                     if (event.organizer.isNotEmpty)
                                       Padding(
@@ -690,8 +685,7 @@ class _EventListView extends StatelessWidget {
                                               .textTheme
                                               .bodySmall
                                               ?.copyWith(
-                                                  color:
-                                                      Colors.grey.shade600),
+                                                  color: Colors.grey.shade600),
                                         ),
                                       ),
                                   ],
@@ -723,7 +717,8 @@ class _EventListView extends StatelessWidget {
                                   if (statusLabel != null && !isReserved)
                                     _StatusChip(
                                       label: statusLabel!,
-                                      color: Theme.of(context).colorScheme.primary,
+                                      color:
+                                          Theme.of(context).colorScheme.primary,
                                     ),
                                 ],
                               ),

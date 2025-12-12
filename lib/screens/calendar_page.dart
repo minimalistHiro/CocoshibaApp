@@ -141,8 +141,8 @@ class _CalendarPageState extends State<CalendarPage> {
                   const SizedBox(height: 4),
                   Text(
                     '対象期間：2025年12月1日〜2030年12月31日',
-                    style:
-                        theme.textTheme.bodySmall?.copyWith(color: subTextColor),
+                    style: theme.textTheme.bodySmall
+                        ?.copyWith(color: subTextColor),
                     textAlign: TextAlign.center,
                   ),
                 ],
@@ -170,7 +170,8 @@ class _CalendarPageState extends State<CalendarPage> {
     return StreamBuilder<List<CalendarEvent>>(
       stream: _eventsStream,
       builder: (context, snapshot) {
-        final eventsByDate = _groupEvents(snapshot.data ?? const <CalendarEvent>[]);
+        final eventsByDate =
+            _groupEvents(snapshot.data ?? const <CalendarEvent>[]);
         final selectedEvents = _eventsForDate(eventsByDate, _selectedDate);
 
         return SafeArea(
@@ -374,7 +375,8 @@ class _MonthGrid extends StatelessWidget {
                 ? Colors.lightBlue.shade50
                 : Colors.white;
 
-        final events = isInMonth ? eventsForMonth[dayNumber] ?? const [] : const [];
+        final events =
+            isInMonth ? eventsForMonth[dayNumber] ?? const [] : const [];
 
         Widget cellContent = DecoratedBox(
           decoration: BoxDecoration(
@@ -386,7 +388,7 @@ class _MonthGrid extends StatelessWidget {
             color: backgroundColor,
           ),
           child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 8),
+            padding: const EdgeInsets.symmetric(vertical: 8),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.center,
               children: [
@@ -420,7 +422,8 @@ class _MonthGrid extends StatelessWidget {
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
                                 style: theme.textTheme.bodySmall?.copyWith(
-                                  fontSize: 10,
+                                  fontSize: 9,
+                                  fontWeight: FontWeight.bold,
                                   color: event.color.withOpacity(0.9),
                                 ),
                               ),
@@ -585,7 +588,8 @@ class _EventTile extends StatelessWidget {
   }
 }
 
-Widget _schedulePlaceholder(bool isActive, ThemeData theme, {double height = 6}) {
+Widget _schedulePlaceholder(bool isActive, ThemeData theme,
+    {double height = 6}) {
   return Container(
     height: height,
     width: double.infinity,
