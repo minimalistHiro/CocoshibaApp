@@ -5,7 +5,9 @@ import '../models/calendar_event.dart';
 import '../services/event_favorite_service.dart';
 import '../services/event_interest_service.dart';
 import '../services/event_service.dart';
+import '../services/existing_event_service.dart';
 import 'edit_event_page.dart';
+import 'event_reservation_list_page.dart';
 
 class EventDetailPage extends StatefulWidget {
   const EventDetailPage({super.key, required this.event});
@@ -22,6 +24,7 @@ class _EventDetailPageState extends State<EventDetailPage> {
   final EventService _eventService = EventService();
   final EventInterestService _interestService = EventInterestService();
   final EventFavoriteService _favoriteService = EventFavoriteService();
+  final ExistingEventService _existingEventService = ExistingEventService();
   late CalendarEvent _event;
   bool _isDeleting = false;
   bool _hasReservation = false;
@@ -34,13 +37,15 @@ class _EventDetailPageState extends State<EventDetailPage> {
   bool _isInterestProcessing = false;
   bool _isFavoriteProcessing = false;
   late final Stream<int> _reservationCountStream;
+  bool _showFavoriteButton = false;
 
   @override
   void initState() {
     super.initState();
     _pageController = PageController();
     _event = widget.event;
-    _reservationCountStream = _eventService.watchReservationCount(_event.id);
+    _reservationCountStream = _eventService.watchEventReservationCount(_event.id);
+    _checkFavoriteAvailability();
     _loadReservationStatus();
     _loadReactionStatuses();
   }
@@ -79,8 +84,7 @@ class _EventDetailPageState extends State<EventDetailPage> {
         final reservationCount = snapshot.data ?? 0;
         final isEventFull = _isEventFull(reservationCount);
         final bool isEventEnded = DateTime.now().isAfter(event.endDateTime);
-        final reservationCountLabel =
-            snapshot.hasData ? '$reservationCount人' : '取得中...';
+        final reservationCountLabel = '$reservationCount人';
         final isReservationBusy =
             _isReservationLoading || _isReservationProcessing;
         final bool isReservationButtonDisabled = isEventEnded ||
@@ -189,6 +193,7 @@ class _EventDetailPageState extends State<EventDetailPage> {
                                   _isFavoriteLoading || _isFavoriteProcessing,
                               onTapInterest: _onInterestPressed,
                               onTapFavorite: _onFavoritePressed,
+                              showFavoriteButton: _showFavoriteButton,
                             ),
                             const SizedBox(height: 8),
                             _InfoRow(
@@ -248,6 +253,19 @@ class _EventDetailPageState extends State<EventDetailPage> {
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
+                      SizedBox(
+                        width: double.infinity,
+                        child: OutlinedButton.icon(
+                          style: OutlinedButton.styleFrom(
+                            padding: const EdgeInsets.symmetric(vertical: 14),
+                            shape: const StadiumBorder(),
+                          ),
+                          onPressed: _openReservationList,
+                          icon: const Icon(Icons.list_alt),
+                          label: const Text('予約者リスト'),
+                        ),
+                      ),
+                      const SizedBox(height: 12),
                       SizedBox(
                         width: double.infinity,
                         child: FilledButton(
@@ -388,7 +406,29 @@ class _EventDetailPageState extends State<EventDetailPage> {
     if (updatedEvent != null && mounted) {
       setState(() => _event = updatedEvent);
       _loadReactionStatuses();
+      _checkFavoriteAvailability();
     }
+  }
+
+  Future<void> _checkFavoriteAvailability() async {
+    final existingId = (_event.existingEventId ?? '').trim();
+    if (existingId.isEmpty) {
+      if (mounted) {
+        setState(() => _showFavoriteButton = false);
+      }
+      return;
+    }
+    final exists = await _existingEventService.exists(existingId);
+    if (!mounted) return;
+    setState(() => _showFavoriteButton = exists);
+  }
+
+  Future<void> _openReservationList() async {
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => EventReservationListPage(event: _event),
+      ),
+    );
   }
 
   Future<void> _onReservationButtonPressed() async {
@@ -632,6 +672,7 @@ class _ReactionButtons extends StatelessWidget {
     required this.isFavoriteBusy,
     required this.onTapInterest,
     required this.onTapFavorite,
+    required this.showFavoriteButton,
   });
 
   final bool isInterested;
@@ -640,21 +681,24 @@ class _ReactionButtons extends StatelessWidget {
   final bool isFavoriteBusy;
   final VoidCallback onTapInterest;
   final VoidCallback onTapFavorite;
+  final bool showFavoriteButton;
 
   @override
   Widget build(BuildContext context) {
-    return Row(
-      children: [
-        Expanded(
-          child: _ReactionButton(
-            label: '気になる',
-            icon: isInterested ? Icons.favorite : Icons.favorite_border,
-            color: Colors.pinkAccent,
-            isBusy: isInterestBusy,
-            onPressed: isInterestBusy ? null : onTapInterest,
-          ),
+    final buttons = <Widget>[
+      Expanded(
+        child: _ReactionButton(
+          label: '気になる',
+          icon: isInterested ? Icons.favorite : Icons.favorite_border,
+          color: Colors.pinkAccent,
+          isBusy: isInterestBusy,
+          onPressed: isInterestBusy ? null : onTapInterest,
         ),
-        const SizedBox(width: 12),
+      ),
+    ];
+    if (showFavoriteButton) {
+      buttons.add(const SizedBox(width: 12));
+      buttons.add(
         Expanded(
           child: _ReactionButton(
             label: 'お気に入り',
@@ -664,8 +708,9 @@ class _ReactionButtons extends StatelessWidget {
             onPressed: isFavoriteBusy ? null : onTapFavorite,
           ),
         ),
-      ],
-    );
+      );
+    }
+    return Row(children: buttons);
   }
 }
 

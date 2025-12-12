@@ -1,11 +1,14 @@
 import 'package:flutter/material.dart';
 
 import '../models/calendar_event.dart';
+import '../models/existing_event.dart';
 import '../services/event_favorite_service.dart';
 import '../services/event_interest_service.dart';
 import '../services/event_service.dart';
+import '../services/existing_event_service.dart';
 import '../services/firebase_auth_service.dart';
 import 'event_detail_page.dart';
+import 'existing_event_schedule_page.dart';
 
 class EventsPage extends StatefulWidget {
   const EventsPage({super.key});
@@ -18,6 +21,7 @@ class _EventsPageState extends State<EventsPage> {
   final EventService _eventService = EventService();
   final EventInterestService _interestService = EventInterestService();
   final EventFavoriteService _favoriteService = EventFavoriteService();
+  final ExistingEventService _existingEventService = ExistingEventService();
   final FirebaseAuthService _authService = FirebaseAuthService();
 
   late final Stream<List<CalendarEvent>> _allEventsStream =
@@ -27,12 +31,17 @@ class _EventsPageState extends State<EventsPage> {
   late final Stream<Set<String>> _interestIdsStream;
   late final Stream<List<FavoriteEventReference>> _favoriteRefsStream;
   late final Stream<Set<String>> _favoriteIdsStream;
+  late final Stream<Set<String>> _existingEventIdsStream;
+  late final Stream<List<ExistingEvent>> _existingEventsStream;
 
   String? get _userId => _authService.currentUser?.uid;
 
   @override
   void initState() {
     super.initState();
+    _existingEventsStream = _existingEventService.watchExistingEvents();
+    _existingEventIdsStream = _existingEventsStream
+        .map((events) => events.map((event) => event.id).toSet());
     if (_userId == null) {
       _reservedEventsStream =
           Stream<List<CalendarEvent>>.value(const <CalendarEvent>[]);
@@ -110,15 +119,10 @@ class _EventsPageState extends State<EventsPage> {
         ),
         body: TabBarView(
           children: [
-            _FavoriteEventsTab(
-              eventsStream: _allEventsStream,
-              favoriteRefsStream: _favoriteRefsStream,
+            _ExistingEventsTab(
+              existingEventsStream: _existingEventsStream,
               favoriteIdsStream: _favoriteIdsStream,
-              interestedIdsStream: _interestIdsStream,
-              reservedEventsStream: _reservedEventsStream,
-              onTapEvent: _openEventDetail,
-              onToggleInterest: _toggleInterest,
-              onToggleFavorite: _toggleFavorite,
+              onToggleFavorite: _toggleExistingFavorite,
             ),
             _InterestedEventsTab(
               eventsStream: _allEventsStream,
@@ -128,6 +132,7 @@ class _EventsPageState extends State<EventsPage> {
               onToggleInterest: _toggleInterest,
               favoriteIdsStream: _favoriteIdsStream,
               onToggleFavorite: _toggleFavorite,
+              existingEventIdsStream: _existingEventIdsStream,
             ),
             _ReservedEventsTab(
               reservedEventsStream: _reservedEventsStream,
@@ -136,6 +141,7 @@ class _EventsPageState extends State<EventsPage> {
               onToggleInterest: _toggleInterest,
               favoriteIdsStream: _favoriteIdsStream,
               onToggleFavorite: _toggleFavorite,
+              existingEventIdsStream: _existingEventIdsStream,
             ),
             _AllEventsTab(
               eventsStream: _allEventsStream,
@@ -145,6 +151,7 @@ class _EventsPageState extends State<EventsPage> {
               onToggleInterest: _toggleInterest,
               favoriteIdsStream: _favoriteIdsStream,
               onToggleFavorite: _toggleFavorite,
+              existingEventIdsStream: _existingEventIdsStream,
             ),
           ],
         ),
@@ -180,6 +187,38 @@ class _EventsPageState extends State<EventsPage> {
       );
     }
   }
+
+  Future<void> _toggleExistingFavorite(
+    ExistingEvent existingEvent,
+    bool isFavorite,
+  ) async {
+    final userId = _userId;
+    if (userId == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('お気に入り機能を使うにはログインしてください')),
+      );
+      return;
+    }
+    try {
+      await _favoriteService.toggleFavoriteForExistingEvent(
+        userId: userId,
+        existingEvent: existingEvent,
+        isFavorite: isFavorite,
+      );
+      final message =
+          isFavorite ? 'お気に入りを解除しました' : 'お気に入りに追加しました';
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(message)),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('お気に入りの更新に失敗しました: $e')),
+      );
+    }
+  }
+
 }
 
 class _InterestedEventsTab extends StatelessWidget {
@@ -191,6 +230,7 @@ class _InterestedEventsTab extends StatelessWidget {
     required this.onToggleInterest,
     required this.favoriteIdsStream,
     required this.onToggleFavorite,
+    required this.existingEventIdsStream,
   });
 
   final Stream<List<CalendarEvent>> eventsStream;
@@ -200,6 +240,7 @@ class _InterestedEventsTab extends StatelessWidget {
   final void Function(CalendarEvent event, bool isInterested) onToggleInterest;
   final Stream<Set<String>> favoriteIdsStream;
   final void Function(CalendarEvent event, bool isFavorite) onToggleFavorite;
+  final Stream<Set<String>> existingEventIdsStream;
 
   @override
   Widget build(BuildContext context) {
@@ -247,6 +288,8 @@ class _InterestedEventsTab extends StatelessWidget {
                       onToggleInterest: onToggleInterest,
                       favoriteIds: favoriteIds,
                       onToggleFavorite: onToggleFavorite,
+                      existingEventIdsStream: existingEventIdsStream,
+                      showFavoriteButton: false,
                     );
                   },
                 );
@@ -267,6 +310,7 @@ class _ReservedEventsTab extends StatelessWidget {
     required this.onToggleInterest,
     required this.favoriteIdsStream,
     required this.onToggleFavorite,
+    required this.existingEventIdsStream,
   });
 
   final Stream<List<CalendarEvent>> reservedEventsStream;
@@ -275,6 +319,7 @@ class _ReservedEventsTab extends StatelessWidget {
   final void Function(CalendarEvent event, bool isInterested) onToggleInterest;
   final Stream<Set<String>> favoriteIdsStream;
   final void Function(CalendarEvent event, bool isFavorite) onToggleFavorite;
+  final Stream<Set<String>> existingEventIdsStream;
 
   @override
   Widget build(BuildContext context) {
@@ -308,6 +353,8 @@ class _ReservedEventsTab extends StatelessWidget {
                   onToggleInterest: onToggleInterest,
                   onToggleFavorite: onToggleFavorite,
                   statusLabel: '予約済み',
+                  existingEventIdsStream: existingEventIdsStream,
+                  showFavoriteButton: false,
                 );
               },
             );
@@ -327,6 +374,7 @@ class _AllEventsTab extends StatelessWidget {
     required this.onToggleInterest,
     required this.favoriteIdsStream,
     required this.onToggleFavorite,
+    required this.existingEventIdsStream,
   });
 
   final Stream<List<CalendarEvent>> eventsStream;
@@ -336,6 +384,7 @@ class _AllEventsTab extends StatelessWidget {
   final void Function(CalendarEvent event, bool isInterested) onToggleInterest;
   final Stream<Set<String>> favoriteIdsStream;
   final void Function(CalendarEvent event, bool isFavorite) onToggleFavorite;
+  final Stream<Set<String>> existingEventIdsStream;
 
   @override
   Widget build(BuildContext context) {
@@ -377,6 +426,8 @@ class _AllEventsTab extends StatelessWidget {
                       onToggleInterest: onToggleInterest,
                       favoriteIds: favoriteIds,
                       onToggleFavorite: onToggleFavorite,
+                      existingEventIdsStream: existingEventIdsStream,
+                      showFavoriteButton: false,
                     );
                   },
                 );
@@ -389,104 +440,143 @@ class _AllEventsTab extends StatelessWidget {
   }
 }
 
-class _FavoriteEventsTab extends StatelessWidget {
-  const _FavoriteEventsTab({
-    required this.eventsStream,
-    required this.favoriteRefsStream,
-    required this.interestedIdsStream,
-    required this.reservedEventsStream,
-    required this.onTapEvent,
-    required this.onToggleInterest,
+class _ExistingEventsTab extends StatelessWidget {
+  const _ExistingEventsTab({
+    required this.existingEventsStream,
     required this.favoriteIdsStream,
     required this.onToggleFavorite,
   });
 
-  final Stream<List<CalendarEvent>> eventsStream;
-  final Stream<List<FavoriteEventReference>> favoriteRefsStream;
-  final Stream<Set<String>> interestedIdsStream;
-  final Stream<List<CalendarEvent>> reservedEventsStream;
-  final ValueChanged<CalendarEvent> onTapEvent;
-  final void Function(CalendarEvent event, bool isInterested) onToggleInterest;
+  final Stream<List<ExistingEvent>> existingEventsStream;
   final Stream<Set<String>> favoriteIdsStream;
-  final void Function(CalendarEvent event, bool isFavorite) onToggleFavorite;
+  final void Function(ExistingEvent event, bool isFavorite) onToggleFavorite;
 
   @override
   Widget build(BuildContext context) {
-    return StreamBuilder<List<FavoriteEventReference>>(
-      stream: favoriteRefsStream,
-      builder: (context, favoriteSnapshot) {
-        if (favoriteSnapshot.connectionState == ConnectionState.waiting) {
+    return StreamBuilder<List<ExistingEvent>>(
+      stream: existingEventsStream,
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
           return const _CenteredProgress();
         }
-        if (favoriteSnapshot.hasError) {
-          return const _ErrorState(message: 'お気に入り情報を取得できませんでした');
+        if (snapshot.hasError) {
+          return const _ErrorState(message: '既存イベントを取得できませんでした');
         }
-        final favoriteRefs =
-            favoriteSnapshot.data ?? const <FavoriteEventReference>[];
-        if (favoriteRefs.isEmpty) {
-          return const _EmptyState(message: 'お気に入り登録されたイベントはありません');
+        final events = snapshot.data ?? const <ExistingEvent>[];
+        if (events.isEmpty) {
+          return const _EmptyState(message: '登録されている既存イベントがありません');
         }
-        final targetIds = favoriteRefs.map((ref) => ref.targetId).toSet();
-
-        return StreamBuilder<List<CalendarEvent>>(
-          stream: eventsStream,
-          builder: (context, eventsSnapshot) {
-            if (eventsSnapshot.connectionState == ConnectionState.waiting) {
-              return const _CenteredProgress();
-            }
-            if (eventsSnapshot.hasError) {
-              return const _ErrorState(message: 'イベント一覧を取得できませんでした');
-            }
-
-            final events = (eventsSnapshot.data ?? const <CalendarEvent>[])
-                .where((event) {
-              final ids = <String>{event.id};
-              final existingId = event.existingEventId;
-              if (existingId != null && existingId.isNotEmpty) {
-                ids.add(existingId);
-              }
-              return ids.any(targetIds.contains);
-            }).toList(growable: false);
-
-            if (events.isEmpty) {
-              return const _EmptyState(message: 'お気に入りに一致するイベントがありません');
-            }
-
-            return StreamBuilder<Set<String>>(
-              stream: interestedIdsStream,
-              builder: (context, interestSnapshot) {
-                final interestedIds = interestSnapshot.data ?? <String>{};
-                return StreamBuilder<List<CalendarEvent>>(
-                  stream: reservedEventsStream,
-              builder: (context, reservedSnapshot) {
-                final reservedIds =
-                    (reservedSnapshot.data ?? const <CalendarEvent>[])
-                        .map((event) => event.id)
-                        .toSet();
-                return StreamBuilder<Set<String>>(
-                  stream: favoriteIdsStream,
-                  builder: (context, favoriteIdsSnapshot) {
-                    final favoriteIds =
-                        favoriteIdsSnapshot.data ?? <String>{};
-                    return _EventListView(
-                      events: events,
-                      interestedIds: interestedIds,
-                      reservedIds: reservedIds,
-                      favoriteIds: favoriteIds,
-                      onTapEvent: onTapEvent,
-                      onToggleInterest: onToggleInterest,
-                      onToggleFavorite: onToggleFavorite,
-                      statusLabel: 'お気に入り',
-                    );
-                  },
+        return StreamBuilder<Set<String>>(
+          stream: favoriteIdsStream,
+          builder: (context, favoriteSnapshot) {
+            final favoriteIds = favoriteSnapshot.data ?? const <String>{};
+            final sortedEvents = List<ExistingEvent>.from(events)
+              ..sort((a, b) {
+                final aFav = favoriteIds.contains(a.id);
+                final bFav = favoriteIds.contains(b.id);
+                if (aFav == bFav) return 0;
+                return aFav ? -1 : 1;
+              });
+            return ListView.separated(
+              padding: const EdgeInsets.all(16),
+              itemCount: sortedEvents.length,
+              separatorBuilder: (_, __) => const SizedBox(height: 12),
+              itemBuilder: (context, index) {
+                final event = sortedEvents[index];
+                final isFavorite = favoriteIds.contains(event.id);
+                return Card(
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(20)),
+                  clipBehavior: Clip.antiAlias,
+                  child: ListTile(
+                    onTap: () => _openSchedule(context, event),
+                    leading: _ExistingEventThumbnail(
+                      imageUrl: event.imageUrls.isNotEmpty
+                          ? event.imageUrls.first
+                          : null,
+                      color: Color(event.colorValue),
+                    ),
+                    title: Text(
+                      event.name.isEmpty ? '無題のイベント' : event.name,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    subtitle: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          event.organizer.isEmpty
+                              ? '主催者未設定'
+                              : event.organizer,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          event.capacity > 0
+                              ? '定員: ${event.capacity}人'
+                              : '定員未設定',
+                        ),
+                      ],
+                    ),
+                    trailing: IconButton(
+                      onPressed: () => onToggleFavorite(event, isFavorite),
+                      icon: Icon(
+                        isFavorite ? Icons.star : Icons.star_border,
+                        color: isFavorite
+                            ? Colors.amber.shade600
+                            : Colors.grey.shade500,
+                      ),
+                    ),
+                  ),
                 );
-              },
-            );
               },
             );
           },
         );
       },
+    );
+  }
+
+  void _openSchedule(BuildContext context, ExistingEvent event) {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => ExistingEventSchedulePage(existingEvent: event),
+      ),
+    );
+  }
+}
+
+class _ExistingEventThumbnail extends StatelessWidget {
+  const _ExistingEventThumbnail({
+    this.imageUrl,
+    required this.color,
+  });
+
+  final String? imageUrl;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    final placeholder = Container(
+      width: 56,
+      height: 56,
+      color: color.withOpacity(0.15),
+      alignment: Alignment.center,
+      child: Icon(Icons.event_note, color: color),
+    );
+    if (imageUrl == null || imageUrl!.isEmpty) return placeholder;
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(8),
+      child: SizedBox(
+        width: 56,
+        height: 56,
+        child: Image.network(
+          imageUrl!,
+          fit: BoxFit.cover,
+          errorBuilder: (_, __, ___) => placeholder,
+        ),
+      ),
     );
   }
 }
@@ -499,6 +589,8 @@ class _EventListView extends StatelessWidget {
     required this.onToggleInterest,
     required this.favoriteIds,
     required this.onToggleFavorite,
+    required this.existingEventIdsStream,
+    this.showFavoriteButton = true,
     this.reservedIds = const <String>{},
     this.statusLabel,
   });
@@ -510,7 +602,9 @@ class _EventListView extends StatelessWidget {
   final ValueChanged<CalendarEvent> onTapEvent;
   final void Function(CalendarEvent event, bool isInterested) onToggleInterest;
   final void Function(CalendarEvent event, bool isFavorite) onToggleFavorite;
+  final Stream<Set<String>> existingEventIdsStream;
   final String? statusLabel;
+  final bool showFavoriteButton;
 
   String _formatDate(DateTime dateTime) {
     final y = dateTime.year;
@@ -530,111 +624,133 @@ class _EventListView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return ListView.separated(
-      padding: const EdgeInsets.all(16),
-      itemBuilder: (context, index) {
-        final event = events[index];
-        final isInterested = interestedIds.contains(event.id);
-        final isReserved = reservedIds.contains(event.id);
-        final isFavorite = favoriteIds.contains(event.id) ||
-            (event.existingEventId != null &&
-                favoriteIds.contains(event.existingEventId!));
-        return Card(
-          shape:
-              RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-          clipBehavior: Clip.antiAlias,
-          child: InkWell(
-            onTap: () => onTapEvent(event),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                _EventThumbnail(
-                    imageUrl: event.imageUrls.isNotEmpty
-                        ? event.imageUrls.first
-                        : null),
-                Padding(
-                  padding: const EdgeInsets.all(16),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
+    return StreamBuilder<Set<String>>(
+      stream: existingEventIdsStream,
+      builder: (context, snapshot) {
+        final existingEventIds = snapshot.data ?? const <String>{};
+        return ListView.separated(
+          padding: const EdgeInsets.all(16),
+          itemBuilder: (context, index) {
+            final event = events[index];
+            final isInterested = interestedIds.contains(event.id);
+            final isReserved = reservedIds.contains(event.id);
+            final isFavorite = favoriteIds.contains(event.id) ||
+                (event.existingEventId != null &&
+                    favoriteIds.contains(event.existingEventId!));
+            final canShowFavoriteButton = _canShowFavoriteButton(
+              event,
+              existingEventIds,
+            );
+            return Card(
+              shape:
+                  RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+              clipBehavior: Clip.antiAlias,
+              child: InkWell(
+                onTap: () => onTapEvent(event),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    _EventThumbnail(
+                        imageUrl: event.imageUrls.isNotEmpty
+                            ? event.imageUrls.first
+                            : null),
+                    Padding(
+                      padding: const EdgeInsets.all(16),
+                      child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  event.name,
-                                  style: Theme.of(context)
-                                      .textTheme
-                                      .titleMedium
-                                      ?.copyWith(fontWeight: FontWeight.bold),
-                                ),
-                                const SizedBox(height: 4),
-                                Text(
-                                  '${_formatDate(event.startDateTime)}  ${_formatTimeRange(event)}',
-                                  style: Theme.of(context)
-                                      .textTheme
-                                      .bodySmall
-                                      ?.copyWith(color: Colors.grey.shade600),
-                                ),
-                                if (event.organizer.isNotEmpty)
-                                  Padding(
-                                    padding: const EdgeInsets.only(top: 2),
-                                    child: Text(
-                                      event.organizer,
+                          Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      event.name,
+                                      style: Theme.of(context)
+                                          .textTheme
+                                          .titleMedium
+                                          ?.copyWith(fontWeight: FontWeight.bold),
+                                    ),
+                                    const SizedBox(height: 4),
+                                    Text(
+                                      '${_formatDate(event.startDateTime)}  ${_formatTimeRange(event)}',
                                       style: Theme.of(context)
                                           .textTheme
                                           .bodySmall
-                                          ?.copyWith(
-                                              color: Colors.grey.shade600),
+                                          ?.copyWith(color: Colors.grey.shade600),
                                     ),
-                                  ),
-                              ],
-                            ),
-                          ),
-                          _InterestButton(
-                            isInterested: isInterested,
-                            onPressed: () =>
-                                onToggleInterest(event, isInterested),
-                          ),
-                          _FavoriteButton(
-                            isFavorite: isFavorite,
-                            onPressed: () =>
-                                onToggleFavorite(event, isFavorite),
-                          ),
-                        ],
-                      ),
-                      if (statusLabel != null || isReserved)
-                        Padding(
-                          padding: const EdgeInsets.only(top: 8),
-                          child: Row(
-                            children: [
-                              if (isReserved)
-                                _StatusChip(
-                                  label: statusLabel ?? '予約済み',
-                                  color: Colors.green.shade600,
+                                    if (event.organizer.isNotEmpty)
+                                      Padding(
+                                        padding: const EdgeInsets.only(top: 2),
+                                        child: Text(
+                                          event.organizer,
+                                          style: Theme.of(context)
+                                              .textTheme
+                                              .bodySmall
+                                              ?.copyWith(
+                                                  color:
+                                                      Colors.grey.shade600),
+                                        ),
+                                      ),
+                                  ],
                                 ),
-                              if (statusLabel != null && !isReserved)
-                                _StatusChip(
-                                  label: statusLabel!,
-                                  color: Theme.of(context).colorScheme.primary,
+                              ),
+                              _InterestButton(
+                                isInterested: isInterested,
+                                onPressed: () =>
+                                    onToggleInterest(event, isInterested),
+                              ),
+                              if (canShowFavoriteButton && showFavoriteButton)
+                                _FavoriteButton(
+                                  isFavorite: isFavorite,
+                                  onPressed: () =>
+                                      onToggleFavorite(event, isFavorite),
                                 ),
                             ],
                           ),
-                        ),
-                    ],
-                  ),
+                          if (statusLabel != null || isReserved)
+                            Padding(
+                              padding: const EdgeInsets.only(top: 8),
+                              child: Row(
+                                children: [
+                                  if (isReserved)
+                                    _StatusChip(
+                                      label: statusLabel ?? '予約済み',
+                                      color: Colors.green.shade600,
+                                    ),
+                                  if (statusLabel != null && !isReserved)
+                                    _StatusChip(
+                                      label: statusLabel!,
+                                      color: Theme.of(context).colorScheme.primary,
+                                    ),
+                                ],
+                              ),
+                            ),
+                        ],
+                      ),
+                    ),
+                  ],
                 ),
-              ],
-            ),
-          ),
+              ),
+            );
+          },
+          separatorBuilder: (_, __) => const SizedBox(height: 12),
+          itemCount: events.length,
         );
       },
-      separatorBuilder: (_, __) => const SizedBox(height: 12),
-      itemCount: events.length,
     );
+  }
+
+  bool _canShowFavoriteButton(
+    CalendarEvent event,
+    Set<String> existingEventIds,
+  ) {
+    final existingId = (event.existingEventId ?? '').trim();
+    if (existingId.isEmpty) return false;
+    if (existingEventIds.isEmpty) return true;
+    return existingEventIds.contains(existingId);
   }
 }
 

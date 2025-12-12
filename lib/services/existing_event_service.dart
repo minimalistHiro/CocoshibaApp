@@ -17,6 +17,12 @@ class ExistingEventService {
   CollectionReference<Map<String, dynamic>> get _existingEventsRef =>
       _firestore.collection('existing_events');
 
+  Future<bool> exists(String existingEventId) async {
+    if (existingEventId.isEmpty) return false;
+    final doc = await _existingEventsRef.doc(existingEventId).get();
+    return doc.exists;
+  }
+
   Future<String> createExistingEvent({
     required String name,
     required String organizer,

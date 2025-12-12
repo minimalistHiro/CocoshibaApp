@@ -6,6 +6,7 @@ import 'package:firebase_storage/firebase_storage.dart';
 import 'package:image_picker/image_picker.dart';
 
 import '../models/calendar_event.dart';
+import '../models/event_reservation_member.dart';
 
 class EventService {
   EventService({
@@ -25,6 +26,9 @@ class EventService {
           .collection('users')
           .doc(userId)
           .collection('event_reservations');
+  CollectionReference<Map<String, dynamic>> _eventReservationsRef(
+          String eventId) =>
+      _eventsRef.doc(eventId).collection('event_reservations');
 
   Future<void> createEvent({
     required String name,
@@ -63,6 +67,7 @@ class EventService {
       'imageUrls': imageUrls,
       'colorValue': colorValue,
       'capacity': capacity,
+      'reservationCount': 0,
       'createdAt': FieldValue.serverTimestamp(),
       'existingEventId':
           resolvedExistingEventId != null && resolvedExistingEventId.isNotEmpty
@@ -172,6 +177,24 @@ class EventService {
           (snapshot) => snapshot.docs
               .map(CalendarEvent.fromDocument)
               .toList(growable: false),
+    );
+  }
+
+  Stream<List<CalendarEvent>> watchEventsByExistingEventId(
+    String existingEventId,
+  ) {
+    if (existingEventId.isEmpty) {
+      return Stream.value(<CalendarEvent>[]);
+    }
+    return _eventsRef
+        .where('existingEventId', isEqualTo: existingEventId)
+        .orderBy('startDateTime')
+        .snapshots()
+        .map(
+          (snapshot) => snapshot.docs
+              .map(CalendarEvent.fromDocument)
+              .where((event) => !event.isClosedDay)
+              .toList(growable: false),
         );
   }
 
@@ -212,13 +235,52 @@ class EventService {
     required CalendarEvent event,
     required String userId,
   }) async {
-    await _userReservationsRef(userId).doc(event.id).set({
-      'userId': userId,
-      'eventId': event.id,
-      'eventName': event.name,
-      'eventStartDateTime': Timestamp.fromDate(event.startDateTime),
-      'eventEndDateTime': Timestamp.fromDate(event.endDateTime),
-      'reservedAt': FieldValue.serverTimestamp(),
+    final reservationRef = _userReservationsRef(userId).doc(event.id);
+    final eventRef = _eventsRef.doc(event.id);
+
+    await _firestore.runTransaction((transaction) async {
+      final reservationSnapshot = await transaction.get(reservationRef);
+      final eventReservationSnapshot =
+          await transaction.get(_eventReservationsRef(event.id).doc(userId));
+      if (reservationSnapshot.exists || eventReservationSnapshot.exists) {
+        return;
+      }
+
+      final userDocRef = _firestore.collection('users').doc(userId);
+      final userSnapshot = await transaction.get(userDocRef);
+      final userData = userSnapshot.data();
+      final userName = (userData?['name'] as String?)?.trim();
+      final userEmail = (userData?['email'] as String?)?.trim();
+      final userArea = (userData?['area'] as String?)?.trim();
+      final userAgeGroup = (userData?['ageGroup'] as String?)?.trim();
+
+      final reservationPayload = {
+        'userId': userId,
+        'eventId': event.id,
+        'eventName': event.name,
+        'eventStartDateTime': Timestamp.fromDate(event.startDateTime),
+        'eventEndDateTime': Timestamp.fromDate(event.endDateTime),
+        'reservedAt': FieldValue.serverTimestamp(),
+      };
+      transaction.set(reservationRef, reservationPayload);
+
+      final eventReservationPayload = {
+        'userId': userId,
+        'userName': userName,
+        'userEmail': userEmail,
+        'userArea': userArea,
+        'userAgeGroup': userAgeGroup,
+        'userPhotoUrl': (userData?['photoUrl'] as String?)?.trim(),
+        'reservedAt': FieldValue.serverTimestamp(),
+      };
+      transaction.set(
+        _eventReservationsRef(event.id).doc(userId),
+        eventReservationPayload,
+      );
+
+      transaction.update(eventRef, {
+        'reservationCount': FieldValue.increment(1),
+      });
     });
   }
 
@@ -226,15 +288,84 @@ class EventService {
     required String eventId,
     required String userId,
   }) async {
-    await _userReservationsRef(userId).doc(eventId).delete();
+    final reservationRef = _userReservationsRef(userId).doc(eventId);
+    final eventRef = _eventsRef.doc(eventId);
+
+    await _firestore.runTransaction((transaction) async {
+      final reservationSnapshot = await transaction.get(reservationRef);
+      if (!reservationSnapshot.exists) {
+        return;
+      }
+
+      final eventReservationDoc =
+          await transaction.get(_eventReservationsRef(eventId).doc(userId));
+      final eventSnapshot = await transaction.get(eventRef);
+
+      transaction.delete(reservationRef);
+      transaction.delete(eventReservationDoc.reference);
+
+      final currentCount =
+          (eventSnapshot.data()?['reservationCount'] as int?) ?? 0;
+      if (currentCount > 0) {
+        transaction.update(eventRef, {
+          'reservationCount': FieldValue.increment(-1),
+        });
+      }
+    });
   }
 
-  Stream<int> watchReservationCount(String eventId) {
-    return _firestore
-        .collectionGroup('event_reservations')
-        .where('eventId', isEqualTo: eventId)
-        .snapshots()
-        .map((snapshot) => snapshot.size);
+  Stream<int> watchEventReservationCount(String eventId) async* {
+    final docRef = _eventsRef.doc(eventId);
+    await for (final snapshot in docRef.snapshots()) {
+      if (!snapshot.exists) {
+        yield 0;
+        continue;
+      }
+
+      final data = snapshot.data();
+      final storedCount = (data?['reservationCount'] as int?);
+      if (storedCount != null) {
+        yield storedCount;
+        continue;
+      }
+
+      final countSnapshot = await _firestore
+          .collectionGroup('event_reservations')
+          .where('eventId', isEqualTo: eventId)
+          .get();
+      final computedCount = countSnapshot.size;
+
+      await docRef.set(
+        {'reservationCount': computedCount},
+        SetOptions(merge: true),
+      );
+      yield computedCount;
+    }
+  }
+
+  Stream<List<EventReservationMember>> watchEventReservations(
+    String eventId,
+  ) {
+    return _eventReservationsRef(eventId).snapshots().map((snapshot) {
+      final members = snapshot.docs
+          .map((doc) => EventReservationMember.fromReservationData(
+                doc.data(),
+              ))
+          .where((member) => member.userId.isNotEmpty)
+          .toList(growable: false);
+
+      members.sort((a, b) {
+        final aTime = a.reservedAt;
+        final bTime = b.reservedAt;
+        if (aTime == null && bTime == null) {
+          return a.name.compareTo(b.name);
+        }
+        if (aTime == null) return 1;
+        if (bTime == null) return -1;
+        return aTime.compareTo(bTime);
+      });
+      return members;
+    });
   }
 
   Stream<List<CalendarEvent>> watchReservedEvents(String userId) {
