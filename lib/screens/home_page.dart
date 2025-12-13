@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../models/calendar_event.dart';
 import '../models/home_page_content.dart';
@@ -9,7 +10,6 @@ import '../services/firebase_auth_service.dart';
 import '../services/notification_service.dart';
 import '../services/home_page_content_service.dart';
 import '../widgets/point_card.dart';
-import 'books_page.dart';
 import 'menu_list_page.dart';
 import 'notification_page.dart';
 import 'point_history_page.dart';
@@ -30,6 +30,9 @@ class _HomePageState extends State<HomePage> {
   final NotificationService _notificationService = NotificationService();
   final HomePageContentService _homePageContentService =
       HomePageContentService();
+  static final Uri _bookOrderFormUri = Uri.parse(
+    'https://docs.google.com/forms/d/e/1FAIpQLSda9VfM-EMborsiY-h11leW1uXgNUPdwv3RFb4_I1GjwFSoOQ/viewform?pli=1',
+  );
   late Future<int> _pointsFuture;
   late final Stream<List<CalendarEvent>> _upcomingEventsStream;
   late final Stream<bool> _hasUnreadNotificationsStream;
@@ -165,12 +168,16 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
-  void _openBookOrderPage() {
-    Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (_) => const BooksPage(),
-      ),
-    );
+  Future<void> _openBookOrderPage() async {
+    if (!await launchUrl(
+      _bookOrderFormUri,
+      mode: LaunchMode.externalApplication,
+    )) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('本の注文ページを開けませんでした')),
+      );
+    }
   }
 
   void _openEventsPage() {
