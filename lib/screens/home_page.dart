@@ -42,7 +42,7 @@ class _HomePageState extends State<HomePage> {
   void initState() {
     super.initState();
     _pointsFuture = _authService.fetchCurrentUserPoints();
-    _upcomingEventsStream = _eventService.watchUpcomingEvents(limit: 5);
+    _upcomingEventsStream = _eventService.watchUpcomingEvents(limit: 7);
     _hasUnreadNotificationsStream = _notificationService
         .watchHasUnreadNotifications(_authService.currentUser?.uid);
     _homePageContentsStream = _homePageContentService.watchContents();
@@ -281,13 +281,12 @@ class _HomePageState extends State<HomePage> {
           StreamBuilder<List<CalendarEvent>>(
             stream: _upcomingEventsStream,
             builder: (context, snapshot) {
-              final events = (snapshot.data ?? const <CalendarEvent>[])
-                  .where((event) => event.imageUrls.isNotEmpty)
-                  .take(5)
+              final upcomingEvents = (snapshot.data ?? const <CalendarEvent>[])
+                  .take(7)
                   .toList(growable: false);
 
               if (snapshot.connectionState == ConnectionState.waiting &&
-                  events.isEmpty) {
+                  upcomingEvents.isEmpty) {
                 return Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: const [
@@ -303,7 +302,7 @@ class _HomePageState extends State<HomePage> {
                 );
               }
 
-              if (events.isEmpty) {
+              if (upcomingEvents.isEmpty) {
                 return Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -332,8 +331,8 @@ class _HomePageState extends State<HomePage> {
                 children: [
                   const _UpcomingEventsHeader(),
                   const SizedBox(height: 12),
-                  _UpcomingEventCarousel(
-                    events: events,
+                  _UpcomingEventsScroller(
+                    events: upcomingEvents,
                     onEventTap: _openEventDetail,
                   ),
                 ],
@@ -376,8 +375,8 @@ class _UpcomingEventsHeader extends StatelessWidget {
   }
 }
 
-class _UpcomingEventCarousel extends StatefulWidget {
-  const _UpcomingEventCarousel({
+class _UpcomingEventsScroller extends StatelessWidget {
+  const _UpcomingEventsScroller({
     required this.events,
     required this.onEventTap,
   });
@@ -386,153 +385,137 @@ class _UpcomingEventCarousel extends StatefulWidget {
   final ValueChanged<CalendarEvent> onEventTap;
 
   @override
-  State<_UpcomingEventCarousel> createState() => _UpcomingEventCarouselState();
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final screenWidth = constraints.maxWidth;
+        const horizontalPadding = 24 * 2;
+        const crossAxisSpacing = 16;
+        final availableWidth =
+            (screenWidth - horizontalPadding - crossAxisSpacing)
+                .clamp(0.0, double.infinity);
+        final cardWidth = availableWidth / 2;
+        const imageAspectRatio = 1;
+        final imageHeight = cardWidth / imageAspectRatio;
+        final totalHeight = imageHeight + 72;
+
+        return SizedBox(
+          height: totalHeight,
+          child: ListView.separated(
+            scrollDirection: Axis.horizontal,
+            physics: const BouncingScrollPhysics(),
+            padding: EdgeInsets.zero,
+            itemCount: events.length,
+            separatorBuilder: (_, __) => const SizedBox(width: 16),
+            itemBuilder: (context, index) {
+              final event = events[index];
+              return SizedBox(
+                width: cardWidth,
+                child: _UpcomingEventCard(
+                  event: event,
+                  onTap: onEventTap,
+                ),
+              );
+            },
+          ),
+        );
+      },
+    );
+  }
 }
 
-class _UpcomingEventCarouselState extends State<_UpcomingEventCarousel> {
-  late final PageController _controller;
-  Timer? _autoScrollTimer;
-  int _currentPage = 0;
+class _UpcomingEventCard extends StatelessWidget {
+  const _UpcomingEventCard({
+    required this.event,
+    required this.onTap,
+  });
 
-  @override
-  void initState() {
-    super.initState();
-    _controller = PageController();
-    _startAutoScroll();
-  }
-
-  @override
-  void didUpdateWidget(covariant _UpcomingEventCarousel oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (oldWidget.events.length != widget.events.length) {
-      _currentPage = 0;
-      if (_controller.hasClients) {
-        _controller.jumpToPage(0);
-      }
-      _startAutoScroll();
-    }
-  }
-
-  void _startAutoScroll() {
-    _autoScrollTimer?.cancel();
-    if (widget.events.length < 2) return;
-    _autoScrollTimer = Timer.periodic(const Duration(seconds: 3), (_) {
-      if (!mounted || !_controller.hasClients) return;
-      _currentPage = (_currentPage + 1) % widget.events.length;
-      _controller.animateToPage(
-        _currentPage,
-        duration: const Duration(milliseconds: 500),
-        curve: Curves.easeInOut,
-      );
-    });
-  }
-
-  @override
-  void dispose() {
-    _autoScrollTimer?.cancel();
-    _controller.dispose();
-    super.dispose();
-  }
-
-  String _formatDate(DateTime dateTime) {
-    final month = dateTime.month.toString().padLeft(2, '0');
-    final day = dateTime.day.toString().padLeft(2, '0');
-    return '${dateTime.year}/$month/$day';
-  }
+  final CalendarEvent event;
+  final ValueChanged<CalendarEvent> onTap;
 
   @override
   Widget build(BuildContext context) {
-    return AspectRatio(
-      aspectRatio: 3 / 2,
-      child: PageView.builder(
-        controller: _controller,
-        itemCount: widget.events.length,
-        onPageChanged: (index) => _currentPage = index,
-        itemBuilder: (context, index) {
-          final event = widget.events[index];
-          final imageUrl = event.imageUrls.first;
-          final dateLabel = _formatDate(event.startDateTime);
+    final theme = Theme.of(context);
+    final hasImage = event.imageUrls.isNotEmpty;
+    final organizerLabel =
+        event.organizer.isNotEmpty ? event.organizer : '主催者情報なし';
 
-          return Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 4),
-            child: GestureDetector(
-              onTap: () => widget.onEventTap(event),
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(28),
-                child: Stack(
-                  fit: StackFit.expand,
-                  children: [
-                    Image.network(
-                      imageUrl,
-                      fit: BoxFit.cover,
-                      loadingBuilder: (context, child, loadingProgress) {
-                        if (loadingProgress == null) return child;
-                        return const Center(child: CircularProgressIndicator());
-                      },
-                      errorBuilder: (context, error, stackTrace) {
-                        return Container(
-                          color: Colors.grey.shade200,
-                          alignment: Alignment.center,
-                          child: const Icon(
-                            Icons.image_not_supported_outlined,
-                            size: 48,
-                            color: Colors.black38,
-                          ),
-                        );
-                      },
-                    ),
-                    Positioned.fill(
-                      child: DecoratedBox(
-                        decoration: BoxDecoration(
-                          gradient: LinearGradient(
-                            begin: Alignment.topCenter,
-                            end: Alignment.bottomCenter,
-                            colors: [
-                              Colors.transparent,
-                              Colors.black.withOpacity(0.2),
-                              Colors.black.withOpacity(0.6),
-                            ],
-                          ),
-                        ),
-                      ),
-                    ),
-                    Positioned(
-                      left: 16,
-                      right: 16,
-                      bottom: 20,
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            dateLabel,
-                            style:
-                                Theme.of(context).textTheme.bodySmall?.copyWith(
-                                      color: Colors.white,
-                                      fontWeight: FontWeight.w600,
-                                    ),
-                          ),
-                          const SizedBox(height: 4),
-                          Text(
-                            event.name,
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
-                            style: Theme.of(context)
-                                .textTheme
-                                .titleMedium
-                                ?.copyWith(
-                                  color: Colors.white,
-                                  fontWeight: FontWeight.bold,
-                                ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-              ),
+    Widget buildImage() {
+      if (!hasImage) {
+        return Container(
+          color: Colors.grey.shade200,
+          alignment: Alignment.center,
+          child: const Icon(
+            Icons.image_not_supported_outlined,
+            size: 48,
+            color: Colors.black38,
+          ),
+        );
+      }
+      return Image.network(
+        event.imageUrls.first,
+        fit: BoxFit.cover,
+        loadingBuilder: (context, child, loadingProgress) {
+          if (loadingProgress == null) return child;
+          return const Center(child: CircularProgressIndicator());
+        },
+        errorBuilder: (context, error, stackTrace) {
+          return Container(
+            color: Colors.grey.shade200,
+            alignment: Alignment.center,
+            child: const Icon(
+              Icons.image_not_supported_outlined,
+              size: 48,
+              color: Colors.black38,
             ),
           );
         },
+      );
+    }
+
+    return Card(
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+      clipBehavior: Clip.antiAlias,
+      elevation: 2,
+      child: InkWell(
+        onTap: () => onTap(event),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            AspectRatio(
+              aspectRatio: 1,
+              child: buildImage(),
+            ),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    event.name,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: theme.textTheme.titleSmall?.copyWith(
+                      fontWeight: FontWeight.bold,
+                      height: 1.2,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    organizerLabel,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: Colors.grey.shade600,
+                      fontWeight: FontWeight.w600,
+                      height: 1.1,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
