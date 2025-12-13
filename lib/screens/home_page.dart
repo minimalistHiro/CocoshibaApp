@@ -11,6 +11,7 @@ import '../services/notification_service.dart';
 import '../services/home_page_content_service.dart';
 import '../widgets/point_card.dart';
 import 'menu_list_page.dart';
+import 'home_page_reservation_history_page.dart';
 import 'notification_page.dart';
 import 'point_history_page.dart';
 import 'home_page_content_detail_page.dart';
@@ -168,6 +169,21 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
+  void _openReservationHistory() {
+    final user = _authService.currentUser;
+    if (user == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('予約一覧を見るにはログインしてください')),
+      );
+      return;
+    }
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => HomePageReservationHistoryPage(userId: user.uid),
+      ),
+    );
+  }
+
   Future<void> _openBookOrderPage() async {
     if (!await launchUrl(
       _bookOrderFormUri,
@@ -261,9 +277,9 @@ class _HomePageState extends State<HomePage> {
                   ),
                   Expanded(
                     child: _ShortcutItem(
-                      icon: Icons.leaderboard_outlined,
-                      label: 'ランキング',
-                      onTap: () => _showShortcutMessage('ランキング'),
+                      icon: Icons.assignment_turned_in_outlined,
+                      label: '予約',
+                      onTap: _openReservationHistory,
                     ),
                   ),
                   Expanded(

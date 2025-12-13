@@ -137,10 +137,10 @@ class HomePageReservationListPage extends StatelessWidget {
                     tileColor:
                         member.isCompleted ? Colors.grey.shade100 : null,
                     trailing: member.isCompleted
-                        ? Text(
-                            '完了済み',
-                            style: theme.textTheme.bodySmall
-                                ?.copyWith(color: Colors.grey.shade600),
+                        ? OutlinedButton(
+                            onPressed: () =>
+                                _confirmIncomplete(context, member),
+                            child: const Text('未完了に戻す'),
                           )
                         : FilledButton(
                             onPressed: () => _confirmComplete(context, member),
@@ -185,6 +185,8 @@ class HomePageReservationListPage extends StatelessWidget {
         contentId: content.id,
         reservationId: member.id,
         isCompleted: true,
+        userId: member.userId,
+        userReservationId: member.userReservationId,
       );
       if (member.userId?.isNotEmpty == true) {
         await _notificationService.createPersonalNotification(
@@ -200,6 +202,48 @@ class HomePageReservationListPage extends StatelessWidget {
     } catch (_) {
       messenger.showSnackBar(
         const SnackBar(content: Text('完了の更新に失敗しました')),
+      );
+    }
+  }
+
+  Future<void> _confirmIncomplete(
+    BuildContext context,
+    HomePageReservationMember member,
+  ) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+            title: const Text('確認'),
+            content: const Text('この予約を未完了に戻しますか？'),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(false),
+                child: const Text('キャンセル'),
+              ),
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(true),
+                child: const Text('未完了に戻す'),
+              ),
+            ],
+          ),
+        ) ??
+        false;
+    if (!confirmed) return;
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      await _reservationService.markReservationCompleted(
+        contentId: content.id,
+        reservationId: member.id,
+        isCompleted: false,
+        userId: member.userId,
+        userReservationId: member.userReservationId,
+      );
+      messenger.showSnackBar(
+        const SnackBar(content: Text('未完了に戻しました')),
+      );
+    } catch (_) {
+      messenger.showSnackBar(
+        const SnackBar(content: Text('更新に失敗しました')),
       );
     }
   }

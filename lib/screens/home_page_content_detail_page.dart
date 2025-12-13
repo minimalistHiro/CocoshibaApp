@@ -232,31 +232,6 @@ class _HomePageContentDetailPageState
               ),
             ),
           const SizedBox(height: 24),
-          StreamBuilder<bool>(
-            stream: _ownerStream,
-            builder: (context, snapshot) {
-              if (snapshot.data != true) {
-                return const SizedBox.shrink();
-              }
-              return Column(
-                children: [
-                  SizedBox(
-                    width: double.infinity,
-                    child: OutlinedButton.icon(
-                      style: OutlinedButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(vertical: 14),
-                        shape: const StadiumBorder(),
-                      ),
-                      onPressed: _openReservationList,
-                      icon: const Icon(Icons.list_alt),
-                      label: const Text('予約者一覧'),
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                ],
-              );
-            },
-          ),
           Text(
             content.title,
             style: Theme.of(context).textTheme.headlineSmall?.copyWith(
@@ -294,6 +269,31 @@ class _HomePageContentDetailPageState
               style: Theme.of(context).textTheme.bodyMedium,
             ),
           const SizedBox(height: 24),
+          StreamBuilder<bool>(
+            stream: _ownerStream,
+            builder: (context, snapshot) {
+              if (snapshot.data != true) {
+                return const SizedBox.shrink();
+              }
+              return Column(
+                children: [
+                  SizedBox(
+                    width: double.infinity,
+                    child: OutlinedButton.icon(
+                      style: OutlinedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                        shape: const StadiumBorder(),
+                      ),
+                      onPressed: _openReservationList,
+                      icon: const Icon(Icons.list_alt),
+                      label: const Text('予約者一覧'),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                ],
+              );
+            },
+          ),
           FilledButton(
             onPressed: (_isOrderProcessing &&
                         content.buttonType == HomePageButtonType.order)

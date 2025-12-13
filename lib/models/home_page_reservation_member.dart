@@ -6,6 +6,8 @@ class HomePageReservationMember {
     this.userId,
     this.userName,
     this.userEmail,
+    this.contentTitle,
+    this.userReservationId,
     this.reservedDate,
     this.pickupDate,
     this.quantity = 0,
@@ -17,6 +19,8 @@ class HomePageReservationMember {
   final String? userId;
   final String? userName;
   final String? userEmail;
+  final String? contentTitle;
+  final String? userReservationId;
   final DateTime? reservedDate;
   final DateTime? pickupDate;
   final int quantity;
@@ -35,6 +39,8 @@ class HomePageReservationMember {
       userId: data['userId'] as String?,
       userName: data['userName'] as String?,
       userEmail: data['userEmail'] as String?,
+      contentTitle: data['contentTitle'] as String?,
+      userReservationId: data['userReservationId'] as String?,
       reservedDate:
           reservedTimestamp is Timestamp ? reservedTimestamp.toDate() : null,
       pickupDate:

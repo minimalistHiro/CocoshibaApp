@@ -4,6 +4,7 @@ import '../models/home_page_content.dart';
 import '../services/firebase_auth_service.dart';
 import '../services/home_page_reservation_service.dart';
 import '../services/notification_service.dart';
+import 'home_page_reservation_complete_page.dart';
 
 class HomePageReservationPage extends StatefulWidget {
   const HomePageReservationPage({super.key, required this.content});
@@ -71,6 +72,7 @@ class _HomePageReservationPageState extends State<HomePageReservationPage> {
 
     setState(() => _isSaving = true);
     try {
+      final completionDate = DateTime.now();
       await _reservationService.createReservation(
         contentId: widget.content.id,
         contentTitle: widget.content.title,
@@ -80,7 +82,7 @@ class _HomePageReservationPageState extends State<HomePageReservationPage> {
         quantity: _quantity,
       );
       final pickupLabel = _formatDate(_selectedDate);
-      final completionLabel = _formatDate(DateTime.now());
+      final completionLabel = _formatDate(completionDate);
       await _notificationService.createPersonalNotification(
         userId: user.uid,
         title: '予約が完了しました',
@@ -89,10 +91,16 @@ class _HomePageReservationPageState extends State<HomePageReservationPage> {
         category: '予約',
       );
       if (!mounted) return;
-      messenger.showSnackBar(
-        const SnackBar(content: Text('予約を受け付けました')),
+      Navigator.of(context).pushReplacement(
+        MaterialPageRoute(
+          builder: (_) => HomePageReservationCompletePage(
+            contentTitle: widget.content.title,
+            completionDate: completionDate,
+            pickupDate: _selectedDate,
+            quantity: _quantity,
+          ),
+        ),
       );
-      Navigator.of(context).pop(true);
     } catch (_) {
       messenger.showSnackBar(
         const SnackBar(content: Text('予約の保存に失敗しました。もう一度お試しください')),

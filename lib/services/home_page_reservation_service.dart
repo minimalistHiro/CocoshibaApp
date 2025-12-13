@@ -40,9 +40,10 @@ class HomePageReservationService {
     final completionLabel = _formatDate(completionDate);
 
     final userDocRef = _firestore.collection('users').doc(userId);
-    final userReservationRef = _userReservationsRef(userId).doc();
     final contentDocRef = _homePagesRef.doc(contentId);
     final contentReservationRef = _contentReservationsRef(contentId).doc();
+    final reservationId = contentReservationRef.id;
+    final userReservationRef = _userReservationsRef(userId).doc(reservationId);
 
     await _firestore.runTransaction((transaction) async {
       final contentSnapshot = await transaction.get(contentDocRef);
@@ -57,6 +58,7 @@ class HomePageReservationService {
         'contentId': contentId,
         'contentTitle': contentTitle,
         'userId': userId,
+        'reservationId': reservationId,
         'reservedDate': Timestamp.fromDate(reservedDate),
         'pickupDate':
             pickupDate != null ? Timestamp.fromDate(pickupDate) : null,
@@ -71,6 +73,7 @@ class HomePageReservationService {
         'userName': (userData?['name'] as String?)?.trim(),
         'userEmail': (userData?['email'] as String?)?.trim(),
         'contentTitle': contentTitle,
+        'userReservationId': reservationId,
         'reservedDate': Timestamp.fromDate(reservedDate),
         'pickupDate':
             pickupDate != null ? Timestamp.fromDate(pickupDate) : null,
@@ -131,16 +134,48 @@ $reserverLabel が $contentTitle の予約をしました
         );
   }
 
+  Stream<List<HomePageReservationMember>> watchUserReservations(
+    String userId,
+  ) {
+    return _userReservationsRef(userId)
+        .orderBy('createdAt', descending: true)
+        .snapshots()
+        .map(
+          (snapshot) => snapshot.docs
+              .map(HomePageReservationMember.fromDocument)
+              .toList(growable: false),
+        );
+  }
+
   Future<void> markReservationCompleted({
     required String contentId,
     required String reservationId,
     required bool isCompleted,
+    String? userId,
+    String? userReservationId,
   }) {
-    final docRef = _contentReservationsRef(contentId).doc(reservationId);
-    return docRef.set(
+    final contentDocRef = _contentReservationsRef(contentId).doc(reservationId);
+    final resolvedUserReservationId =
+        (userReservationId != null && userReservationId.isNotEmpty)
+            ? userReservationId
+            : reservationId;
+
+    final batch = _firestore.batch();
+    batch.set(
+      contentDocRef,
       {'isCompleted': isCompleted},
       SetOptions(merge: true),
     );
+    if (userId != null && userId.isNotEmpty) {
+      final userReservationRef =
+          _userReservationsRef(userId).doc(resolvedUserReservationId);
+      batch.set(
+        userReservationRef,
+        {'isCompleted': isCompleted},
+        SetOptions(merge: true),
+      );
+    }
+    return batch.commit();
   }
 
   String _formatDate(DateTime date) {
