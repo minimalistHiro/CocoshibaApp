@@ -9,6 +9,7 @@ import 'notification_settings_page.dart';
 import 'closed_days_settings_page.dart';
 import 'owner_settings_page.dart';
 import 'menu_management_page.dart';
+import 'campaigns_page.dart';
 import 'profile_edit_page.dart';
 import 'support_help_page.dart';
 import 'home_screen_editor_page.dart';
@@ -342,6 +343,17 @@ class _AccountPageState extends State<AccountPage> {
               onTap: () => Navigator.of(context).push(
                 MaterialPageRoute(
                   builder: (_) => const HomeScreenEditorPage(),
+                ),
+              ),
+            ),
+            _buildSettingCard(
+              context: context,
+              icon: Icons.local_offer_outlined,
+              title: 'キャンペーン編集',
+              subtitle: '掲載・開催期間を管理',
+              onTap: () => Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (_) => const CampaignsPage(),
                 ),
               ),
             ),

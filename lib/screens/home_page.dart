@@ -4,11 +4,13 @@ import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../models/calendar_event.dart';
+import '../models/campaign.dart';
 import '../models/home_page_content.dart';
 import '../services/event_service.dart';
 import '../services/firebase_auth_service.dart';
 import '../services/notification_service.dart';
 import '../services/home_page_content_service.dart';
+import '../services/campaign_service.dart';
 import '../widgets/point_card.dart';
 import 'menu_list_page.dart';
 import 'home_page_reservation_history_page.dart';
@@ -31,6 +33,7 @@ class _HomePageState extends State<HomePage> {
   final NotificationService _notificationService = NotificationService();
   final HomePageContentService _homePageContentService =
       HomePageContentService();
+  final CampaignService _campaignService = CampaignService();
   static final Uri _bookOrderFormUri = Uri.parse(
     'https://docs.google.com/forms/d/e/1FAIpQLSda9VfM-EMborsiY-h11leW1uXgNUPdwv3RFb4_I1GjwFSoOQ/viewform?pli=1',
   );
@@ -38,6 +41,7 @@ class _HomePageState extends State<HomePage> {
   late final Stream<List<CalendarEvent>> _upcomingEventsStream;
   late final Stream<bool> _hasUnreadNotificationsStream;
   late final Stream<List<HomePageContent>> _homePageContentsStream;
+  late final Stream<List<Campaign>> _activeCampaignsStream;
 
   @override
   void initState() {
@@ -47,6 +51,7 @@ class _HomePageState extends State<HomePage> {
     _hasUnreadNotificationsStream = _notificationService
         .watchHasUnreadNotifications(_authService.currentUser?.uid);
     _homePageContentsStream = _homePageContentService.watchContents();
+    _activeCampaignsStream = _campaignService.watchActiveCampaigns();
   }
 
   void _showNotification(BuildContext context) {
@@ -294,6 +299,44 @@ class _HomePageState extends State<HomePage> {
             ),
           ),
           const SizedBox(height: 32),
+          StreamBuilder<List<Campaign>>(
+            stream: _activeCampaignsStream,
+            builder: (context, snapshot) {
+              final campaigns = snapshot.data ?? const <Campaign>[];
+              final isLoading =
+                  snapshot.connectionState == ConnectionState.waiting;
+
+              if (isLoading && campaigns.isEmpty) {
+                return const Center(
+                  child: Padding(
+                    padding: EdgeInsets.symmetric(vertical: 24),
+                    child: CircularProgressIndicator(),
+                  ),
+                );
+              }
+
+              if (campaigns.isEmpty) {
+                return const SizedBox.shrink();
+              }
+
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'キャンペーン',
+                    style: Theme.of(context)
+                        .textTheme
+                        .titleMedium
+                        ?.copyWith(fontWeight: FontWeight.bold),
+                  ),
+                  const SizedBox(height: 12),
+                  _CampaignCarousel(campaigns: campaigns),
+                  const SizedBox(height: 24),
+                ],
+              );
+            },
+          ),
+          const SizedBox(height: 8),
           StreamBuilder<List<CalendarEvent>>(
             stream: _upcomingEventsStream,
             builder: (context, snapshot) {
@@ -387,6 +430,182 @@ class _UpcomingEventsHeader extends StatelessWidget {
       style: theme.textTheme.titleMedium?.copyWith(
         fontWeight: FontWeight.bold,
       ),
+    );
+  }
+}
+
+class _CampaignCarousel extends StatefulWidget {
+  const _CampaignCarousel({required this.campaigns});
+
+  final List<Campaign> campaigns;
+
+  @override
+  State<_CampaignCarousel> createState() => _CampaignCarouselState();
+}
+
+class _CampaignCarouselState extends State<_CampaignCarousel> {
+  late final PageController _pageController;
+  Timer? _timer;
+  int _currentPage = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _pageController = PageController();
+    _startAutoScroll();
+  }
+
+  @override
+  void didUpdateWidget(covariant _CampaignCarousel oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.campaigns.length != oldWidget.campaigns.length) {
+      _currentPage = 0;
+      _pageController.jumpToPage(0);
+      _restartAutoScroll();
+    }
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    _pageController.dispose();
+    super.dispose();
+  }
+
+  void _startAutoScroll() {
+    if (widget.campaigns.length <= 1) return;
+    _timer?.cancel();
+    _timer = Timer.periodic(const Duration(seconds: 4), (_) {
+      if (!mounted || widget.campaigns.isEmpty) return;
+      final nextPage = (_currentPage + 1) % widget.campaigns.length;
+      _pageController.animateToPage(
+        nextPage,
+        duration: const Duration(milliseconds: 400),
+        curve: Curves.easeInOut,
+      );
+    });
+  }
+
+  void _restartAutoScroll() {
+    _timer?.cancel();
+    _startAutoScroll();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        AspectRatio(
+          aspectRatio: 2 / 1,
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(16),
+            child: PageView.builder(
+              controller: _pageController,
+              itemCount: widget.campaigns.length,
+              onPageChanged: (index) {
+                setState(() => _currentPage = index);
+              },
+              itemBuilder: (context, index) {
+                final campaign = widget.campaigns[index];
+                return _CampaignSlide(campaign: campaign);
+              },
+            ),
+          ),
+        ),
+        const SizedBox(height: 8),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: List.generate(widget.campaigns.length, (index) {
+            final isActive = index == _currentPage;
+            return AnimatedContainer(
+              duration: const Duration(milliseconds: 200),
+              margin: const EdgeInsets.symmetric(horizontal: 4),
+              width: isActive ? 12 : 8,
+              height: isActive ? 12 : 8,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: isActive
+                    ? Theme.of(context).colorScheme.primary
+                    : Colors.grey.shade400,
+              ),
+            );
+          }),
+        ),
+      ],
+    );
+  }
+}
+
+class _CampaignSlide extends StatelessWidget {
+  const _CampaignSlide({required this.campaign});
+
+  final Campaign campaign;
+
+  @override
+  Widget build(BuildContext context) {
+    final hasImage = campaign.imageUrl != null && campaign.imageUrl!.isNotEmpty;
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        hasImage
+            ? Image.network(
+                campaign.imageUrl!,
+                fit: BoxFit.cover,
+                errorBuilder: (_, __, ___) => Container(
+                  color: Colors.grey.shade200,
+                  child: const Icon(Icons.broken_image_outlined, size: 48),
+                ),
+              )
+            : Container(
+                color: Colors.grey.shade200,
+                child: Center(
+                  child: Icon(
+                    Icons.local_offer_outlined,
+                    size: 48,
+                    color: Colors.grey.shade600,
+                  ),
+                ),
+              ),
+        Container(
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.bottomCenter,
+              end: Alignment.topCenter,
+              colors: [
+                Colors.black.withOpacity(0.55),
+                Colors.black.withOpacity(0.1),
+              ],
+            ),
+          ),
+        ),
+        Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisAlignment: MainAxisAlignment.end,
+            children: [
+              Text(
+                campaign.title.isEmpty ? 'キャンペーン' : campaign.title,
+                style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                      color: Colors.white,
+                      fontWeight: FontWeight.bold,
+                    ),
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+              ),
+              const SizedBox(height: 8),
+              Text(
+                campaign.body,
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                      color: Colors.white,
+                    ),
+                maxLines: 3,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ],
+          ),
+        ),
+      ],
     );
   }
 }
