@@ -316,4 +316,11 @@ class NotificationService {
 
     return controller.stream;
   }
+
+  Future<void> deleteNotification(String notificationId) async {
+    final batch = _firestore.batch();
+    batch.delete(_notificationsRef.doc(notificationId));
+    batch.delete(_ownerNotificationsRef.doc(notificationId));
+    await batch.commit();
+  }
 }

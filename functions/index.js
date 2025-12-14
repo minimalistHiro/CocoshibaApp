@@ -6,7 +6,6 @@ admin.initializeApp();
 const db = admin.firestore();
 const messaging = admin.messaging();
 
-const ANNOUNCEMENT_CHANNEL_ID = 'app_announcements';
 const BATCH_SIZE = 500;
 
 exports.onNotificationCreated = functions
@@ -65,6 +64,72 @@ exports.onNotificationCreated = functions
     return null;
   });
 
+exports.onPersonalNotificationCreated = functions
+  .region('us-central1')
+  .firestore.document('users/{userId}/personalNotifications/{notificationId}')
+  .onCreate(async (snapshot, context) => {
+    const data = snapshot.data();
+    if (!data) return null;
+
+    const { userId, notificationId } = context.params;
+    const title = (data.title || '').toString().trim() || 'ココシバからのお知らせ';
+    const body = (data.body || '').toString().trim();
+    if (!body) return null;
+
+    const userDoc = await db.collection('users').doc(userId).get();
+    const fcmTokens = (userDoc.data()?.fcmTokens || []).filter(
+      (token) => typeof token === 'string' && token.length > 0
+    );
+    if (fcmTokens.length === 0) return null;
+
+    await messaging.sendEachForMulticast({
+      tokens: fcmTokens,
+      notification: { title, body },
+      data: {
+        notificationId,
+        category: (data.category || 'general').toString(),
+        title,
+        body,
+      },
+      android: { priority: 'high', notification: { sound: 'default' } },
+      apns: {
+        headers: { 'apns-priority': '10', 'apns-push-type': 'alert' },
+        payload: { aps: { alert: { title, body }, sound: 'default' } },
+      },
+    });
+    return null;
+  });
+
+exports.onOwnerNotificationCreated = functions
+  .region('us-central1')
+  .firestore.document('owner_notifications/{notificationId}')
+  .onCreate(async (snapshot, context) => {
+    const data = snapshot.data();
+    if (!data) return null;
+
+    const notificationId = context.params.notificationId;
+    const title = (data.title || '').toString().trim() || 'ココシバからのお知らせ';
+    const body = (data.body || '').toString().trim();
+    if (!body) return null;
+
+    const ownerTokens = await collectOwnerTokens();
+    if (!ownerTokens || ownerTokens.tokens.length === 0) return null;
+
+    await sendAnnouncementBatches({
+      tokens: ownerTokens.tokens,
+      tokenOwners: ownerTokens.tokenOwners,
+      notification: { title, body },
+      data: {
+        notificationId,
+        category: (data.category || 'general').toString(),
+        title,
+        body,
+      },
+      notificationId,
+    });
+    return null;
+  });
+
 async function collectAllUserTokens() {
   const usersSnapshot = await db.collection('users').get();
   if (usersSnapshot.empty) {
@@ -100,6 +165,36 @@ async function collectAllUserTokens() {
   return { tokens, tokenOwners };
 }
 
+async function collectOwnerTokens() {
+  const tokens = [];
+  const tokenOwners = new Map();
+
+  const ownerSnapshots = await Promise.all([
+    db.collection('users').where('isOwner', '==', true).get(),
+    db.collection('users').where('isSubOwner', '==', true).get(),
+  ]);
+
+  ownerSnapshots.forEach((snapshot) => {
+    snapshot.forEach((doc) => {
+      const userData = doc.data() || {};
+      const fcmTokens = userData.fcmTokens;
+      if (!Array.isArray(fcmTokens)) return;
+
+      fcmTokens.forEach((token) => {
+        if (typeof token !== 'string' || token.length === 0) return;
+        if (!tokenOwners.has(token)) {
+          tokenOwners.set(token, new Set());
+          tokens.push(token);
+        }
+        tokenOwners.get(token).add(doc.id);
+      });
+    });
+  });
+
+  if (tokens.length === 0) return null;
+  return { tokens, tokenOwners };
+}
+
 async function sendAnnouncementBatches({
   tokens,
   tokenOwners,
@@ -120,7 +215,6 @@ async function sendAnnouncementBatches({
           priority: 'high',
           notification: {
             sound: 'default',
-            channelId: ANNOUNCEMENT_CHANNEL_ID,
           },
         },
         apns: {

@@ -43,7 +43,7 @@ class _NotificationPageState extends State<NotificationPage> {
     }
   }
 
-  void _openDetail(AppNotification notification) {
+  void _openDetail(AppNotification notification, {required bool isOwner}) {
     unawaited(
       _notificationService.markAsRead(
         userId: _authService.currentUser?.uid,
@@ -52,7 +52,10 @@ class _NotificationPageState extends State<NotificationPage> {
     );
     Navigator.of(context).push(
       MaterialPageRoute(
-        builder: (_) => NotificationDetailPage(notification: notification),
+        builder: (_) => NotificationDetailPage(
+          notification: notification,
+          isOwner: isOwner,
+        ),
       ),
     );
   }
@@ -132,7 +135,10 @@ class _NotificationPageState extends State<NotificationPage> {
                       final notification = notifications[index];
                       return _NotificationCard(
                         notification: notification,
-                        onTap: () => _openDetail(notification),
+                        onTap: () => _openDetail(
+                          notification,
+                          isOwner: isOwner,
+                        ),
                         isRead: readIds.contains(notification.id),
                       );
                     },

@@ -18,6 +18,25 @@ Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   } catch (_) {
     // Firebase may already be initialized when the handler is invoked.
   }
+
+  // Handle data-only/background messages and surface them as local notifications.
+  final notification = message.notification;
+  final title =
+      notification?.title ?? message.data['title'] ?? 'ココシバからのお知らせ';
+  final body = notification?.body ?? message.data['body'];
+  if (body == null || body.isEmpty) {
+    return;
+  }
+  final notificationId = message.data['notificationId'] ??
+      message.messageId ??
+      DateTime.now().millisecondsSinceEpoch.toString();
+
+  final localNotificationService = LocalNotificationService();
+  await localNotificationService.showAnnouncementNotification(
+    notificationId: notificationId,
+    title: title,
+    body: body,
+  );
 }
 
 class PushNotificationService {
