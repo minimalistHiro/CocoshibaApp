@@ -28,15 +28,12 @@ class HomePageReservationService {
   Future<void> createReservation({
     required String contentId,
     required String contentTitle,
-    required DateTime reservedDate,
+    required DateTime pickupDate,
     required String userId,
-    DateTime? pickupDate,
     required int quantity,
   }) async {
     final completionDate = DateTime.now();
-    final reservedLabel = _formatDate(reservedDate);
-    final pickupLabel =
-        pickupDate != null ? _formatDate(pickupDate) : reservedLabel;
+    final pickupLabel = _formatDate(pickupDate);
     final completionLabel = _formatDate(completionDate);
 
     final userDocRef = _firestore.collection('users').doc(userId);
@@ -59,9 +56,7 @@ class HomePageReservationService {
         'contentTitle': contentTitle,
         'userId': userId,
         'reservationId': reservationId,
-        'reservedDate': Timestamp.fromDate(reservedDate),
-        'pickupDate':
-            pickupDate != null ? Timestamp.fromDate(pickupDate) : null,
+        'pickupDate': Timestamp.fromDate(pickupDate),
         'quantity': quantity,
         'isCompleted': false,
         'createdAt': FieldValue.serverTimestamp(),
@@ -74,9 +69,7 @@ class HomePageReservationService {
         'userEmail': (userData?['email'] as String?)?.trim(),
         'contentTitle': contentTitle,
         'userReservationId': reservationId,
-        'reservedDate': Timestamp.fromDate(reservedDate),
-        'pickupDate':
-            pickupDate != null ? Timestamp.fromDate(pickupDate) : null,
+        'pickupDate': Timestamp.fromDate(pickupDate),
         'quantity': quantity,
         'isCompleted': false,
         'createdAt': FieldValue.serverTimestamp(),
@@ -101,11 +94,8 @@ $reserverLabel が $contentTitle の予約をしました
         'userEmail': (userData?['email'] as String?)?.trim(),
         'contentId': contentId,
         'contentTitle': contentTitle,
-        'reservedDate': Timestamp.fromDate(reservedDate),
-        'pickupDate':
-            pickupDate != null ? Timestamp.fromDate(pickupDate) : null,
+        'pickupDate': Timestamp.fromDate(pickupDate),
         'pickupLabel': pickupLabel,
-        'reservedLabel': reservedLabel,
         'quantity': quantity,
         'completionDate': Timestamp.fromDate(completionDate),
         'completionLabel': completionLabel,

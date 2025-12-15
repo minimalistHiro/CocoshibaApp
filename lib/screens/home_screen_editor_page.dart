@@ -185,7 +185,8 @@ class _HomeScreenEditorPageState extends State<HomeScreenEditorPage> {
         actions: [
           IconButton(
             onPressed: () => _openForm(),
-            icon: const Icon(Icons.add),
+            icon: const Icon(Icons.add_circle_outline),
+            color: Theme.of(context).colorScheme.primary,
             tooltip: '新規ページ',
           ),
         ],
@@ -226,7 +227,8 @@ class _HomeScreenEditorPageState extends State<HomeScreenEditorPage> {
 
           return ListView.separated(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
-            itemBuilder: (context, index) => _buildContentCard(contents[index]),
+            itemBuilder: (context, index) =>
+                _buildContentCard(contents[index]),
             separatorBuilder: (_, __) => const SizedBox(height: 12),
             itemCount: contents.length,
           );

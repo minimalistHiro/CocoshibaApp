@@ -67,17 +67,20 @@ class _NotificationPageState extends State<NotificationPage> {
       stream: _profileStream,
       builder: (context, profileSnapshot) {
         final profile = profileSnapshot.data;
-        final isOwner = (profile?['isOwner'] == true) ||
-            (profile?['isSubOwner'] == true);
+        final isOwner = profile?['isOwner'] == true;
         return Scaffold(
           appBar: AppBar(
             title: const Text('お知らせ'),
-            actions: [
-              IconButton(
-                onPressed: _openCreate,
-                icon: const Icon(Icons.add),
-              ),
-            ],
+            actions: isOwner
+                ? [
+                    IconButton(
+                      onPressed: _openCreate,
+                      icon: const Icon(Icons.add_circle_outline),
+                      color: Theme.of(context).colorScheme.primary,
+                      tooltip: '新規お知らせ',
+                    ),
+                  ]
+                : null,
           ),
           body: StreamBuilder<List<AppNotification>>(
             stream: _notificationService.watchNotifications(
@@ -112,12 +115,14 @@ class _NotificationPageState extends State<NotificationPage> {
                         'まだお知らせがありません',
                         style: Theme.of(context).textTheme.titleMedium,
                       ),
-                      const SizedBox(height: 8),
-                      Text(
-                        '右上のプラスボタンから\n最初のお知らせを作成しましょう',
-                        textAlign: TextAlign.center,
-                        style: Theme.of(context).textTheme.bodyMedium,
-                      ),
+                      if (isOwner) ...[
+                        const SizedBox(height: 8),
+                        Text(
+                          '右上のプラスボタンから\n最初のお知らせを作成しましょう',
+                          textAlign: TextAlign.center,
+                          style: Theme.of(context).textTheme.bodyMedium,
+                        ),
+                      ],
                     ],
                   ),
                 );

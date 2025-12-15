@@ -6,6 +6,7 @@ import '../services/event_favorite_service.dart';
 import '../services/event_interest_service.dart';
 import '../services/event_service.dart';
 import '../services/existing_event_service.dart';
+import '../services/firebase_auth_service.dart';
 import 'edit_event_page.dart';
 import 'event_reservation_list_page.dart';
 
@@ -25,6 +26,7 @@ class _EventDetailPageState extends State<EventDetailPage> {
   final EventInterestService _interestService = EventInterestService();
   final EventFavoriteService _favoriteService = EventFavoriteService();
   final ExistingEventService _existingEventService = ExistingEventService();
+  final FirebaseAuthService _authService = FirebaseAuthService();
   late CalendarEvent _event;
   bool _isDeleting = false;
   bool _hasReservation = false;
@@ -38,6 +40,7 @@ class _EventDetailPageState extends State<EventDetailPage> {
   bool _isFavoriteProcessing = false;
   late final Stream<int> _reservationCountStream;
   bool _showFavoriteButton = false;
+  bool _isOwner = false;
 
   @override
   void initState() {
@@ -48,6 +51,7 @@ class _EventDetailPageState extends State<EventDetailPage> {
     _checkFavoriteAvailability();
     _loadReservationStatus();
     _loadReactionStatuses();
+    _loadOwnerStatus();
   }
 
   @override
@@ -100,13 +104,15 @@ class _EventDetailPageState extends State<EventDetailPage> {
         return Scaffold(
           appBar: AppBar(
             title: const Text('イベント詳細'),
-            actions: [
-              IconButton(
-                icon: const Icon(Icons.edit),
-                tooltip: 'イベントを編集',
-                onPressed: _openEditEvent,
-              ),
-            ],
+            actions: _isOwner
+                ? [
+                    IconButton(
+                      icon: const Icon(Icons.edit),
+                      tooltip: 'イベントを編集',
+                      onPressed: _openEditEvent,
+                    ),
+                  ]
+                : null,
           ),
           body: Column(
             children: [
@@ -253,19 +259,21 @@ class _EventDetailPageState extends State<EventDetailPage> {
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      SizedBox(
-                        width: double.infinity,
-                        child: OutlinedButton.icon(
-                          style: OutlinedButton.styleFrom(
-                            padding: const EdgeInsets.symmetric(vertical: 14),
-                            shape: const StadiumBorder(),
+                      if (_isOwner) ...[
+                        SizedBox(
+                          width: double.infinity,
+                          child: OutlinedButton.icon(
+                            style: OutlinedButton.styleFrom(
+                              padding: const EdgeInsets.symmetric(vertical: 14),
+                              shape: const StadiumBorder(),
+                            ),
+                            onPressed: _openReservationList,
+                            icon: const Icon(Icons.list_alt),
+                            label: const Text('予約者リスト'),
                           ),
-                          onPressed: _openReservationList,
-                          icon: const Icon(Icons.list_alt),
-                          label: const Text('予約者リスト'),
                         ),
-                      ),
-                      const SizedBox(height: 12),
+                        const SizedBox(height: 12),
+                      ],
                       SizedBox(
                         width: double.infinity,
                         child: FilledButton(
@@ -295,27 +303,28 @@ class _EventDetailPageState extends State<EventDetailPage> {
                         ),
                       ),
                       const SizedBox(height: 12),
-                      SizedBox(
-                        width: double.infinity,
-                        child: FilledButton(
-                          style: FilledButton.styleFrom(
-                            backgroundColor: Colors.redAccent,
-                            shape: const StadiumBorder(),
-                            padding: const EdgeInsets.symmetric(vertical: 16),
+                      if (_isOwner)
+                        SizedBox(
+                          width: double.infinity,
+                          child: FilledButton(
+                            style: FilledButton.styleFrom(
+                              backgroundColor: Colors.redAccent,
+                              shape: const StadiumBorder(),
+                              padding: const EdgeInsets.symmetric(vertical: 16),
+                            ),
+                            onPressed: _isDeleting ? null : _confirmDelete,
+                            child: _isDeleting
+                                ? const SizedBox(
+                                    width: 20,
+                                    height: 20,
+                                    child: CircularProgressIndicator(
+                                      color: Colors.white,
+                                      strokeWidth: 2,
+                                    ),
+                                  )
+                                : const Text('イベントを削除する'),
                           ),
-                          onPressed: _isDeleting ? null : _confirmDelete,
-                          child: _isDeleting
-                              ? const SizedBox(
-                                  width: 20,
-                                  height: 20,
-                                  child: CircularProgressIndicator(
-                                    color: Colors.white,
-                                    strokeWidth: 2,
-                                  ),
-                                )
-                              : const Text('イベントを削除する'),
                         ),
-                      ),
                     ],
                   ),
                 ),
@@ -395,6 +404,14 @@ class _EventDetailPageState extends State<EventDetailPage> {
         SnackBar(content: Text('リアクション状態の取得に失敗しました: $e')),
       );
     }
+  }
+
+  Future<void> _loadOwnerStatus() async {
+    final profile = await _authService.fetchCurrentUserProfile();
+    if (!mounted) return;
+    setState(() {
+      _isOwner = profile?['isOwner'] == true;
+    });
   }
 
   Future<void> _openEditEvent() async {

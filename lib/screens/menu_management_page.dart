@@ -108,10 +108,14 @@ class _MenuManagementPageState extends State<MenuManagementPage> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('メニュー編集'),
-      ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: () => _openForm(),
-        child: const Icon(Icons.add),
+        actions: [
+          IconButton(
+            onPressed: () => _openForm(),
+            icon: const Icon(Icons.add_circle_outline),
+            color: Theme.of(context).colorScheme.primary,
+            tooltip: 'メニューを追加',
+          ),
+        ],
       ),
       body: StreamBuilder<List<MenuItem>>(
         stream: _menuService.watchMenus(),
@@ -141,7 +145,7 @@ class _MenuManagementPageState extends State<MenuManagementPage> {
                   const SizedBox(height: 16),
                   const Text('登録されたメニューがありません'),
                   const SizedBox(height: 8),
-                  const Text('右下のプラスボタンからメニューを追加しましょう'),
+                  const Text('右上のプラスボタンからメニューを追加しましょう'),
                 ],
               ),
             );

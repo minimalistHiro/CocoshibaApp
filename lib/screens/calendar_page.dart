@@ -24,6 +24,10 @@ class _CalendarPageState extends State<CalendarPage> {
   final FirebaseAuthService _authService = FirebaseAuthService();
   final EventInterestService _interestService = EventInterestService();
   final EventService _eventService = EventService();
+  late final Stream<Map<String, dynamic>?> _profileStream =
+      _authService.currentUser == null
+          ? const Stream<Map<String, dynamic>?>.empty()
+          : _authService.watchCurrentUserProfile();
   late final Stream<List<CalendarEvent>> _eventsStream =
       _eventService.watchEvents(_startDate, _endDate);
   late final Stream<Set<String>> _interestIdsStream =
@@ -126,7 +130,11 @@ class _CalendarPageState extends State<CalendarPage> {
     }
   }
 
-  Widget _buildHeader(BuildContext context, DateTime currentMonth) {
+  Widget _buildHeader(
+    BuildContext context,
+    DateTime currentMonth, {
+    required bool isOwner,
+  }) {
     final theme = Theme.of(context);
     const textColor = Colors.black87;
     const subTextColor = Colors.black54;
@@ -146,12 +154,13 @@ class _CalendarPageState extends State<CalendarPage> {
                 ),
               ),
             ),
-            IconButton(
-              onPressed: _openCreateEvent,
-              icon: const Icon(Icons.add_circle_outline),
-              color: theme.colorScheme.primary,
-              tooltip: 'イベント作成',
-            ),
+            if (isOwner)
+              IconButton(
+                onPressed: _openCreateEvent,
+                icon: const Icon(Icons.add_circle_outline),
+                color: theme.colorScheme.primary,
+                tooltip: 'イベント作成',
+              ),
           ],
         ),
         const SizedBox(height: 12),
@@ -202,80 +211,89 @@ class _CalendarPageState extends State<CalendarPage> {
     final screenHeight = MediaQuery.of(context).size.height;
     final calendarHeight = math.max(screenHeight * 0.5, 450.0);
 
-    return StreamBuilder<List<CalendarEvent>>(
-      stream: _eventsStream,
-      builder: (context, snapshot) {
-        final eventsByDate =
-            _groupEvents(snapshot.data ?? const <CalendarEvent>[]);
-        final selectedEvents = _eventsForDate(eventsByDate, _selectedDate);
+    return StreamBuilder<Map<String, dynamic>?>(
+      stream: _profileStream,
+      builder: (context, profileSnapshot) {
+        final profile = profileSnapshot.data;
+        final isOwner = profile?['isOwner'] == true;
 
-        return SafeArea(
-          child: Container(
-            color: background,
-            child: SingleChildScrollView(
-              padding: const EdgeInsets.only(bottom: 32),
-              child: Column(
-                children: [
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(24, 24, 24, 8),
-                    child: _buildHeader(context, currentMonth),
-                  ),
-                  SizedBox(
-                    height: calendarHeight,
-                    child: PageView.builder(
-                      controller: _pageController,
-                      itemCount: _monthCount,
-                      onPageChanged: (index) {
-                        setState(() => _currentPage = index);
-                      },
-                      itemBuilder: (context, index) {
-                        final month = _monthForIndex(index);
-                        return Padding(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 16,
-                            vertical: 8,
-                          ),
-                          child: Column(
-                            children: [
-                              const _WeekdayHeader(),
-                              const SizedBox(height: 16),
-                              Expanded(
-                                child: _MonthGrid(
-                                  month: month,
-                                  selectedDate: _selectedDate,
-                                  eventsForMonth:
-                                      _eventsForMonth(eventsByDate, month),
-                                  onSelectDate: (date) {
-                                    setState(() => _selectedDate = date);
-                                  },
-                                ),
+        return StreamBuilder<List<CalendarEvent>>(
+          stream: _eventsStream,
+          builder: (context, snapshot) {
+            final eventsByDate =
+                _groupEvents(snapshot.data ?? const <CalendarEvent>[]);
+            final selectedEvents = _eventsForDate(eventsByDate, _selectedDate);
+
+            return SafeArea(
+              child: Container(
+                color: background,
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.only(bottom: 32),
+                  child: Column(
+                    children: [
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(24, 24, 24, 8),
+                        child:
+                            _buildHeader(context, currentMonth, isOwner: isOwner),
+                      ),
+                      SizedBox(
+                        height: calendarHeight,
+                        child: PageView.builder(
+                          controller: _pageController,
+                          itemCount: _monthCount,
+                          onPageChanged: (index) {
+                            setState(() => _currentPage = index);
+                          },
+                          itemBuilder: (context, index) {
+                            final month = _monthForIndex(index);
+                            return Padding(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 16,
+                                vertical: 8,
                               ),
-                            ],
-                          ),
-                        );
-                      },
-                    ),
+                              child: Column(
+                                children: [
+                                  const _WeekdayHeader(),
+                                  const SizedBox(height: 16),
+                                  Expanded(
+                                    child: _MonthGrid(
+                                      month: month,
+                                      selectedDate: _selectedDate,
+                                      eventsForMonth:
+                                          _eventsForMonth(eventsByDate, month),
+                                      onSelectDate: (date) {
+                                        setState(() => _selectedDate = date);
+                                      },
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            );
+                          },
+                        ),
+                      ),
+                      Padding(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 24,
+                          vertical: 16,
+                        ),
+                        child: _EventList(
+                          selectedDate: _selectedDate,
+                          events: selectedEvents,
+                          weekdayLabel: _weekdayLabel,
+                          isLoading: snapshot.connectionState ==
+                              ConnectionState.waiting,
+                          interestIdsStream: _interestIdsStream,
+                          onToggleInterest: _toggleInterest,
+                          onTap: _openEventDetail,
+                        ),
+                      ),
+                    ],
                   ),
-                  Padding(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 24,
-                      vertical: 16,
-                    ),
-                    child: _EventList(
-                      selectedDate: _selectedDate,
-                      events: selectedEvents,
-                      weekdayLabel: _weekdayLabel,
-                      isLoading:
-                          snapshot.connectionState == ConnectionState.waiting,
-                      interestIdsStream: _interestIdsStream,
-                      onToggleInterest: _toggleInterest,
-                      onTap: _openEventDetail,
-                    ),
-                  ),
-                ],
+                ),
               ),
-            ),
-          ),
+            );
+          },
         );
       },
     );

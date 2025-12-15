@@ -334,72 +334,87 @@ class _AccountPageState extends State<AccountPage> {
               ),
             ),
             const SizedBox(height: 16),
-            _buildSectionHeader('管理者設定'),
-            _buildSettingCard(
-              context: context,
-              icon: Icons.dashboard_customize_outlined,
-              title: 'ホーム画面編集',
-              subtitle: 'ホームのページを追加・整理',
-              onTap: () => Navigator.of(context).push(
-                MaterialPageRoute(
-                  builder: (_) => const HomeScreenEditorPage(),
-                ),
-              ),
-            ),
-            _buildSettingCard(
-              context: context,
-              icon: Icons.local_offer_outlined,
-              title: 'キャンペーン編集',
-              subtitle: '掲載・開催期間を管理',
-              onTap: () => Navigator.of(context).push(
-                MaterialPageRoute(
-                  builder: (_) => const CampaignsPage(),
-                ),
-              ),
-            ),
-            _buildSettingCard(
-              context: context,
-              icon: Icons.event_busy_outlined,
-              title: '定休日設定',
-              subtitle: '休業日をカレンダーで管理',
-              onTap: () => Navigator.of(context).push(
-                MaterialPageRoute(
-                  builder: (_) => const ClosedDaysSettingsPage(),
-                ),
-              ),
-            ),
-            _buildSettingCard(
-              context: context,
-              icon: Icons.admin_panel_settings_outlined,
-              title: 'オーナー設定',
-              subtitle: 'ポイント還元率・店舗情報の管理',
-              onTap: () => Navigator.of(context).push(
-                MaterialPageRoute(
-                  builder: (_) => const OwnerSettingsPage(),
-                ),
-              ),
-            ),
-            _buildSettingCard(
-              context: context,
-              icon: Icons.restaurant_menu_outlined,
-              title: 'メニュー管理',
-              subtitle: 'メニュー一覧の編集・追加',
-              onTap: () => Navigator.of(context).push(
-                MaterialPageRoute(
-                  builder: (_) => const MenuManagementPage(),
-                ),
-              ),
-            ),
-            _buildSettingCard(
-              context: context,
-              icon: Icons.edit_calendar_outlined,
-              title: '既存イベント編集',
-              subtitle: '公開済みイベントの内容を変更',
-              onTap: () => Navigator.of(context).push(
-                MaterialPageRoute(
-                  builder: (_) => const ExistingEventsPage(),
-                ),
-              ),
+            StreamBuilder<Map<String, dynamic>?>(
+              stream: _profileStream,
+              builder: (context, snapshot) {
+                final isOwner = snapshot.data?['isOwner'] == true;
+                if (!isOwner) {
+                  return const SizedBox.shrink();
+                }
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    _buildSectionHeader('管理者設定'),
+                    _buildSettingCard(
+                      context: context,
+                      icon: Icons.dashboard_customize_outlined,
+                      title: 'ホーム画面編集',
+                      subtitle: 'ホームのページを追加・整理',
+                      onTap: () => Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (_) => const HomeScreenEditorPage(),
+                        ),
+                      ),
+                    ),
+                    _buildSettingCard(
+                      context: context,
+                      icon: Icons.local_offer_outlined,
+                      title: 'キャンペーン編集',
+                      subtitle: '掲載・開催期間を管理',
+                      onTap: () => Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (_) => const CampaignsPage(),
+                        ),
+                      ),
+                    ),
+                    _buildSettingCard(
+                      context: context,
+                      icon: Icons.event_busy_outlined,
+                      title: '定休日設定',
+                      subtitle: '休業日をカレンダーで管理',
+                      onTap: () => Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (_) => const ClosedDaysSettingsPage(),
+                        ),
+                      ),
+                    ),
+                    _buildSettingCard(
+                      context: context,
+                      icon: Icons.admin_panel_settings_outlined,
+                      title: 'オーナー設定',
+                      subtitle: 'ポイント還元率・店舗情報の管理',
+                      onTap: () => Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (_) => const OwnerSettingsPage(),
+                        ),
+                      ),
+                    ),
+                    _buildSettingCard(
+                      context: context,
+                      icon: Icons.restaurant_menu_outlined,
+                      title: 'メニュー管理',
+                      subtitle: 'メニュー一覧の編集・追加',
+                      onTap: () => Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (_) => const MenuManagementPage(),
+                        ),
+                      ),
+                    ),
+                    _buildSettingCard(
+                      context: context,
+                      icon: Icons.edit_calendar_outlined,
+                      title: '既存イベント編集',
+                      subtitle: '公開済みイベントの内容を変更',
+                      onTap: () => Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (_) => const ExistingEventsPage(),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                  ],
+                );
+              },
             ),
             const SizedBox(height: 32),
             FilledButton.icon(

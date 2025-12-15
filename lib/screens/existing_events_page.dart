@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../models/existing_event.dart';
 import '../services/existing_event_service.dart';
+import '../services/firebase_auth_service.dart';
 import 'existing_event_create_page.dart';
 import 'existing_event_edit_page.dart';
 
@@ -14,8 +15,11 @@ class ExistingEventsPage extends StatefulWidget {
 
 class _ExistingEventsPageState extends State<ExistingEventsPage> {
   final ExistingEventService _existingEventService = ExistingEventService();
+  final FirebaseAuthService _authService = FirebaseAuthService();
   late final Stream<List<ExistingEvent>> _existingEventsStream =
       _existingEventService.watchExistingEvents();
+  late final Stream<Map<String, dynamic>?> _profileStream =
+      _authService.watchCurrentUserProfile();
 
   void _openCreate() {
     Navigator.of(context).push(
@@ -77,59 +81,66 @@ class _ExistingEventsPageState extends State<ExistingEventsPage> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('既存イベント編集'),
-      ),
-      body: SafeArea(
-        child: Column(
-          children: [
-            Expanded(
-              child: StreamBuilder<List<ExistingEvent>>(
-                stream: _existingEventsStream,
-                builder: (context, snapshot) {
-                  if (snapshot.hasError) {
-                    return _StateMessage(
-                      message: '既存イベントを読み込めませんでした: ${snapshot.error}',
-                    );
-                  }
+    return StreamBuilder<Map<String, dynamic>?>(
+      stream: _profileStream,
+      builder: (context, profileSnapshot) {
+        final profile = profileSnapshot.data;
+        final isOwner = profile?['isOwner'] == true;
 
-                  if (snapshot.connectionState == ConnectionState.waiting) {
-                    return const Center(child: CircularProgressIndicator());
-                  }
+        return Scaffold(
+          appBar: AppBar(
+            title: const Text('既存イベント編集'),
+            actions: isOwner
+                ? [
+                    IconButton(
+                      onPressed: _openCreate,
+                      icon: const Icon(Icons.add_circle_outline),
+                      color: Theme.of(context).colorScheme.primary,
+                      tooltip: '新規既存イベント',
+                    ),
+                  ]
+                : null,
+          ),
+          body: SafeArea(
+            child: Column(
+              children: [
+                Expanded(
+                  child: StreamBuilder<List<ExistingEvent>>(
+                    stream: _existingEventsStream,
+                    builder: (context, snapshot) {
+                      if (snapshot.hasError) {
+                        return _StateMessage(
+                          message: '既存イベントを読み込めませんでした: ${snapshot.error}',
+                        );
+                      }
 
-                  final events = snapshot.data ?? const <ExistingEvent>[];
-                  if (events.isEmpty) {
-                    return const _StateMessage(
-                      message: '登録されている既存イベントがありません',
-                    );
-                  }
+                      if (snapshot.connectionState == ConnectionState.waiting) {
+                        return const Center(child: CircularProgressIndicator());
+                      }
 
-                  return ListView.separated(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
-                    itemCount: events.length,
-                    separatorBuilder: (_, __) => const SizedBox(height: 8),
-                    itemBuilder: (context, index) =>
-                        _buildEventCard(events[index]),
-                  );
-                },
-              ),
-            ),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
-              child: FilledButton.icon(
-                onPressed: _openCreate,
-                icon: const Icon(Icons.add_box_outlined),
-                label: const Text('新規既存イベントを作成'),
-                style: FilledButton.styleFrom(
-                  minimumSize: const Size.fromHeight(48),
+                      final events = snapshot.data ?? const <ExistingEvent>[];
+                      if (events.isEmpty) {
+                        return const _StateMessage(
+                          message: '登録されている既存イベントがありません',
+                        );
+                      }
+
+                      return ListView.separated(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 16, vertical: 24),
+                        itemCount: events.length,
+                        separatorBuilder: (_, __) => const SizedBox(height: 8),
+                        itemBuilder: (context, index) =>
+                            _buildEventCard(events[index]),
+                      );
+                    },
+                  ),
                 ),
-              ),
+              ],
             ),
-          ],
-        ),
-      ),
+          ),
+        );
+      },
     );
   }
 }

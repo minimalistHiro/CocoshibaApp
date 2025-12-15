@@ -25,7 +25,7 @@ class _HomePageContentDetailPageState
   int _currentPage = 0;
   final FirebaseAuthService _authService = FirebaseAuthService();
   final HomePageOrderService _orderService = HomePageOrderService();
-  late final Stream<bool> _ownerStream;
+  late final Stream<bool> _ownerOrSubOwnerStream;
   StreamSubscription<String?>? _orderSubscription;
   StreamSubscription<User?>? _authSubscription;
   String? _userId;
@@ -46,10 +46,10 @@ class _HomePageContentDetailPageState
       _userId = newUserId;
       _handleAuthUserChanged();
     });
-    _ownerStream = _authService.watchCurrentUserProfile().map(
-          (profile) =>
-              (profile?['isOwner'] == true) || (profile?['isSubOwner'] == true),
-        );
+    _ownerOrSubOwnerStream = _authService.watchCurrentUserProfile().map(
+      (profile) =>
+          (profile?['isOwner'] == true) || (profile?['isSubOwner'] == true),
+    );
     _handleAuthUserChanged();
   }
 
@@ -270,7 +270,7 @@ class _HomePageContentDetailPageState
             ),
           const SizedBox(height: 24),
           StreamBuilder<bool>(
-            stream: _ownerStream,
+            stream: _ownerOrSubOwnerStream,
             builder: (context, snapshot) {
               if (snapshot.data != true) {
                 return const SizedBox.shrink();

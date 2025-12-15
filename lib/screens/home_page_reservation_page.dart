@@ -76,7 +76,6 @@ class _HomePageReservationPageState extends State<HomePageReservationPage> {
       await _reservationService.createReservation(
         contentId: widget.content.id,
         contentTitle: widget.content.title,
-        reservedDate: _selectedDate,
         userId: user.uid,
         pickupDate: _selectedDate,
         quantity: _quantity,

@@ -4,6 +4,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_storage/firebase_storage.dart';
+import 'package:flutter/foundation.dart';
 
 class FirebaseAuthService {
   FirebaseAuthService({
@@ -101,6 +102,7 @@ class FirebaseAuthService {
         'isSubOwner': false,
         'points': 0,
         'createdAt': FieldValue.serverTimestamp(),
+        'lastLoginAt': FieldValue.serverTimestamp(),
       };
 
       if (trimmedBio != null && trimmedBio.isNotEmpty) {
@@ -116,11 +118,18 @@ class FirebaseAuthService {
   Future<UserCredential> signIn({
     required String email,
     required String password,
-  }) {
-    return _auth.signInWithEmailAndPassword(
+  }) async {
+    final credential = await _auth.signInWithEmailAndPassword(
       email: email.trim(),
       password: password.trim(),
     );
+
+    final user = credential.user;
+    if (user != null) {
+      await _updateLastLogin(user);
+    }
+
+    return credential;
   }
 
   Future<void> signOut() => _auth.signOut();
@@ -268,5 +277,17 @@ class FirebaseAuthService {
     final metadata = SettableMetadata(contentType: 'image/jpeg');
     await ref.putData(data, metadata);
     return ref.getDownloadURL();
+  }
+
+  Future<void> _updateLastLogin(User user) async {
+    try {
+      await _firestore.collection('users').doc(user.uid).set(
+        {'lastLoginAt': FieldValue.serverTimestamp()},
+        SetOptions(merge: true),
+      );
+    } catch (error, stackTrace) {
+      debugPrint('Failed to update last login: $error');
+      debugPrint('$stackTrace');
+    }
   }
 }

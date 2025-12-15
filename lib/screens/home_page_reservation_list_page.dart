@@ -12,6 +12,15 @@ class HomePageReservationListPage extends StatelessWidget {
   final HomePageReservationService _reservationService =
       HomePageReservationService();
   final NotificationService _notificationService = NotificationService();
+
+  String _formatDate(DateTime? dateTime) {
+    if (dateTime == null) return '';
+    final year = dateTime.year;
+    final month = dateTime.month.toString().padLeft(2, '0');
+    final day = dateTime.day.toString().padLeft(2, '0');
+    return '$year年$month月$day日';
+  }
+
   String _formatDateTime(DateTime? dateTime) {
     if (dateTime == null) return '';
     final year = dateTime.year;
@@ -89,17 +98,16 @@ class HomePageReservationListPage extends StatelessWidget {
               if (member.userEmail?.isNotEmpty ?? false) {
                 subtitleLines.add(member.userEmail!);
               }
-              final reservedLabel = _formatDateTime(member.reservedDate);
-              final reservedTime = _formatTime(member.reservedDate);
-              final pickupLabel = _formatDateTime(member.pickupDate);
-              final pickupTime = _formatTime(member.pickupDate);
+              final reservedAt = member.createdAt ?? member.reservedDate;
+              final reservedLabel = _formatDateTime(reservedAt);
+              final reservedTime = _formatTime(reservedAt);
+              final pickupLabel = _formatDate(member.pickupDate);
               if (reservedLabel.isNotEmpty) {
                 subtitleLines.add(
                     '予約日: $reservedLabel${reservedTime.isNotEmpty ? ' $reservedTime' : ''}');
               }
               if (pickupLabel.isNotEmpty) {
-                subtitleLines.add(
-                    '受け取り日: $pickupLabel${pickupTime.isNotEmpty ? ' $pickupTime' : ''}');
+                subtitleLines.add('受け取り日: $pickupLabel');
               }
               subtitleLines.add('個数: ${member.quantity}');
               final initials = (member.userName?.trim() ?? '').isNotEmpty

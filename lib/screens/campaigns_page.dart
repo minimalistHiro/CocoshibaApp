@@ -81,6 +81,7 @@ class _CampaignsPageState extends State<CampaignsPage> {
           IconButton(
             onPressed: _openCreate,
             icon: const Icon(Icons.add_circle_outline),
+            color: Theme.of(context).colorScheme.primary,
             tooltip: '新規キャンペーン',
           ),
         ],

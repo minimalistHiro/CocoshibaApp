@@ -31,7 +31,7 @@ class HomePageReservationMember {
     DocumentSnapshot<Map<String, dynamic>> snapshot,
   ) {
     final data = snapshot.data() ?? <String, dynamic>{};
-    final reservedTimestamp = data['reservedDate'];
+    final reservedTimestamp = data['reservedDate'] ?? data['pickupDate'];
     final pickupTimestamp = data['pickupDate'];
     final createdTimestamp = data['createdAt'];
     return HomePageReservationMember(
