@@ -12,6 +12,7 @@ import '../services/notification_service.dart';
 import '../services/home_page_content_service.dart';
 import '../services/campaign_service.dart';
 import '../widgets/point_card.dart';
+import '../widgets/event_card.dart';
 import 'menu_list_page.dart';
 import 'home_page_reservation_history_page.dart';
 import 'notification_page.dart';
@@ -646,112 +647,15 @@ class _UpcomingEventsScroller extends StatelessWidget {
               final event = events[index];
               return SizedBox(
                 width: cardWidth,
-                child: _UpcomingEventCard(
+                child: EventCard(
                   event: event,
-                  onTap: onEventTap,
+                  onTap: () => onEventTap(event),
                 ),
               );
             },
           ),
         );
       },
-    );
-  }
-}
-
-class _UpcomingEventCard extends StatelessWidget {
-  const _UpcomingEventCard({
-    required this.event,
-    required this.onTap,
-  });
-
-  final CalendarEvent event;
-  final ValueChanged<CalendarEvent> onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final hasImage = event.imageUrls.isNotEmpty;
-    final organizerLabel =
-        event.organizer.isNotEmpty ? event.organizer : '主催者情報なし';
-
-    Widget buildImage() {
-      if (!hasImage) {
-        return Container(
-          color: Colors.grey.shade200,
-          alignment: Alignment.center,
-          child: const Icon(
-            Icons.image_not_supported_outlined,
-            size: 48,
-            color: Colors.black38,
-          ),
-        );
-      }
-      return Image.network(
-        event.imageUrls.first,
-        fit: BoxFit.cover,
-        loadingBuilder: (context, child, loadingProgress) {
-          if (loadingProgress == null) return child;
-          return const Center(child: CircularProgressIndicator());
-        },
-        errorBuilder: (context, error, stackTrace) {
-          return Container(
-            color: Colors.grey.shade200,
-            alignment: Alignment.center,
-            child: const Icon(
-              Icons.image_not_supported_outlined,
-              size: 48,
-              color: Colors.black38,
-            ),
-          );
-        },
-      );
-    }
-
-    return Card(
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-      clipBehavior: Clip.antiAlias,
-      elevation: 2,
-      child: InkWell(
-        onTap: () => onTap(event),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            AspectRatio(
-              aspectRatio: 1,
-              child: buildImage(),
-            ),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    event.name,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: theme.textTheme.titleSmall?.copyWith(
-                      fontWeight: FontWeight.bold,
-                      height: 1.2,
-                    ),
-                  ),
-                  const SizedBox(height: 2),
-                  Text(
-                    organizerLabel,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      color: Colors.grey.shade600,
-                      fontWeight: FontWeight.w600,
-                      height: 1.1,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
     );
   }
 }

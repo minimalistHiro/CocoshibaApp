@@ -7,6 +7,7 @@ import '../services/event_interest_service.dart';
 import '../services/event_service.dart';
 import '../services/existing_event_service.dart';
 import '../services/firebase_auth_service.dart';
+import '../widgets/event_list_card.dart';
 import 'event_detail_page.dart';
 import 'existing_event_schedule_page.dart';
 
@@ -599,22 +600,6 @@ class _EventListView extends StatelessWidget {
   final String? statusLabel;
   final bool showFavoriteButton;
 
-  String _formatDate(DateTime dateTime) {
-    final y = dateTime.year;
-    final m = dateTime.month.toString().padLeft(2, '0');
-    final d = dateTime.day.toString().padLeft(2, '0');
-    return '$y/$m/$d';
-  }
-
-  String _formatTimeRange(CalendarEvent event) {
-    String twoDigits(int value) => value.toString().padLeft(2, '0');
-    final start =
-        '${twoDigits(event.startDateTime.hour)}:${twoDigits(event.startDateTime.minute)}';
-    final end =
-        '${twoDigits(event.endDateTime.hour)}:${twoDigits(event.endDateTime.minute)}';
-    return '$start〜$end';
-  }
-
   @override
   Widget build(BuildContext context) {
     return StreamBuilder<Set<String>>(
@@ -634,101 +619,20 @@ class _EventListView extends StatelessWidget {
               event,
               existingEventIds,
             );
-            return Card(
-              shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(20)),
-              clipBehavior: Clip.antiAlias,
-              child: InkWell(
-                onTap: () => onTapEvent(event),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    _EventThumbnail(
-                        imageUrl: event.imageUrls.isNotEmpty
-                            ? event.imageUrls.first
-                            : null),
-                    Padding(
-                      padding: const EdgeInsets.all(16),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Row(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                      event.name,
-                                      style: Theme.of(context)
-                                          .textTheme
-                                          .titleMedium
-                                          ?.copyWith(
-                                              fontWeight: FontWeight.bold),
-                                    ),
-                                    const SizedBox(height: 4),
-                                    Text(
-                                      '${_formatDate(event.startDateTime)}  ${_formatTimeRange(event)}',
-                                      style: Theme.of(context)
-                                          .textTheme
-                                          .bodySmall
-                                          ?.copyWith(
-                                              color: Colors.grey.shade600),
-                                    ),
-                                    if (event.organizer.isNotEmpty)
-                                      Padding(
-                                        padding: const EdgeInsets.only(top: 2),
-                                        child: Text(
-                                          event.organizer,
-                                          style: Theme.of(context)
-                                              .textTheme
-                                              .bodySmall
-                                              ?.copyWith(
-                                                  color: Colors.grey.shade600),
-                                        ),
-                                      ),
-                                  ],
-                                ),
-                              ),
-                              _InterestButton(
-                                isInterested: isInterested,
-                                onPressed: () =>
-                                    onToggleInterest(event, isInterested),
-                              ),
-                              if (canShowFavoriteButton && showFavoriteButton)
-                                _FavoriteButton(
-                                  isFavorite: isFavorite,
-                                  onPressed: () =>
-                                      onToggleFavorite(event, isFavorite),
-                                ),
-                            ],
-                          ),
-                          if (statusLabel != null || isReserved)
-                            Padding(
-                              padding: const EdgeInsets.only(top: 8),
-                              child: Row(
-                                children: [
-                                  if (isReserved)
-                                    _StatusChip(
-                                      label: statusLabel ?? '予約済み',
-                                      color: Colors.green.shade600,
-                                    ),
-                                  if (statusLabel != null && !isReserved)
-                                    _StatusChip(
-                                      label: statusLabel!,
-                                      color:
-                                          Theme.of(context).colorScheme.primary,
-                                    ),
-                                ],
-                              ),
-                            ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-              ),
+            return EventListCard(
+              event: event,
+              onTap: () => onTapEvent(event),
+              isInterested: isInterested,
+              isReserved: isReserved,
+              isFavorite: isFavorite,
+              statusLabel: statusLabel,
+              showFavoriteButton: showFavoriteButton && canShowFavoriteButton,
+              canShowFavoriteButton: canShowFavoriteButton,
+              onToggleInterest: () =>
+                  onToggleInterest(event, isInterested),
+              onToggleFavorite: showFavoriteButton && canShowFavoriteButton
+                  ? () => onToggleFavorite(event, isFavorite)
+                  : null,
             );
           },
           separatorBuilder: (_, __) => const SizedBox(height: 12),
@@ -746,118 +650,6 @@ class _EventListView extends StatelessWidget {
     if (existingId.isEmpty) return false;
     if (existingEventIds.isEmpty) return true;
     return existingEventIds.contains(existingId);
-  }
-}
-
-class _InterestButton extends StatelessWidget {
-  const _InterestButton({
-    required this.isInterested,
-    required this.onPressed,
-  });
-
-  final bool isInterested;
-  final VoidCallback onPressed;
-
-  @override
-  Widget build(BuildContext context) {
-    final color = isInterested ? Colors.pinkAccent : Colors.grey.shade500;
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        IconButton(
-          onPressed: onPressed,
-          icon: Icon(
-            isInterested ? Icons.favorite : Icons.favorite_border,
-            color: color,
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-class _FavoriteButton extends StatelessWidget {
-  const _FavoriteButton({
-    required this.isFavorite,
-    required this.onPressed,
-  });
-
-  final bool isFavorite;
-  final VoidCallback onPressed;
-
-  @override
-  Widget build(BuildContext context) {
-    final color = isFavorite ? Colors.amber.shade600 : Colors.grey.shade500;
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        IconButton(
-          onPressed: onPressed,
-          icon: Icon(
-            isFavorite ? Icons.star : Icons.star_border,
-            color: color,
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-class _EventThumbnail extends StatelessWidget {
-  const _EventThumbnail({this.imageUrl});
-
-  final String? imageUrl;
-
-  @override
-  Widget build(BuildContext context) {
-    final placeholder = Container(
-      height: 160,
-      color: Colors.grey.shade200,
-      alignment: Alignment.center,
-      child: Icon(Icons.event, color: Colors.grey.shade500, size: 48),
-    );
-    if (imageUrl == null || imageUrl!.isEmpty) return placeholder;
-    return SizedBox(
-      height: 160,
-      child: Image.network(
-        imageUrl!,
-        fit: BoxFit.cover,
-        loadingBuilder: (context, child, progress) {
-          if (progress == null) return child;
-          return const SizedBox(
-            height: 160,
-            child: Center(child: CircularProgressIndicator()),
-          );
-        },
-        errorBuilder: (_, __, ___) => placeholder,
-      ),
-    );
-  }
-}
-
-class _StatusChip extends StatelessWidget {
-  const _StatusChip({required this.label, required this.color});
-
-  final String label;
-  final Color color;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-      decoration: BoxDecoration(
-        color: color.withOpacity(0.1),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: color.withOpacity(0.4)),
-      ),
-      child: Text(
-        label,
-        style: Theme.of(context)
-            .textTheme
-            .labelMedium
-            ?.copyWith(color: color, fontWeight: FontWeight.bold),
-      ),
-    );
   }
 }
 

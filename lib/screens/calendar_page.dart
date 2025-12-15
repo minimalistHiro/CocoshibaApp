@@ -4,6 +4,9 @@ import 'package:flutter/material.dart';
 
 import '../models/calendar_event.dart';
 import '../services/event_service.dart';
+import '../services/event_interest_service.dart';
+import '../services/firebase_auth_service.dart';
+import '../widgets/event_list_card.dart';
 import 'create_event_page.dart';
 import 'event_detail_page.dart';
 
@@ -18,9 +21,16 @@ class _CalendarPageState extends State<CalendarPage> {
   static final DateTime _startDate = DateTime(2025, 12, 1);
   static final DateTime _endDate = DateTime(2030, 12, 31);
 
+  final FirebaseAuthService _authService = FirebaseAuthService();
+  final EventInterestService _interestService = EventInterestService();
   final EventService _eventService = EventService();
   late final Stream<List<CalendarEvent>> _eventsStream =
       _eventService.watchEvents(_startDate, _endDate);
+  late final Stream<Set<String>> _interestIdsStream =
+      _authService.currentUser == null
+          ? Stream<Set<String>>.value(const <String>{})
+          : _interestService
+              .watchInterestedEventIds(_authService.currentUser!.uid);
 
   late final int _monthCount = (_endDate.year - _startDate.year) * 12 +
       (_endDate.month - _startDate.month) +
@@ -89,6 +99,31 @@ class _CalendarPageState extends State<CalendarPage> {
     Navigator.of(context).push(
       MaterialPageRoute(builder: (_) => EventDetailPage(event: event)),
     );
+  }
+
+  Future<void> _toggleInterest(
+    CalendarEvent event,
+    bool isInterested,
+  ) async {
+    final userId = _authService.currentUser?.uid;
+    if (userId == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('気になるに追加するにはログインしてください')),
+      );
+      return;
+    }
+    try {
+      await _interestService.toggleInterest(
+        userId: userId,
+        event: event,
+        isInterested: isInterested,
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('気になるの更新に失敗しました: $e')),
+      );
+    }
   }
 
   Widget _buildHeader(BuildContext context, DateTime currentMonth) {
@@ -232,6 +267,8 @@ class _CalendarPageState extends State<CalendarPage> {
                       weekdayLabel: _weekdayLabel,
                       isLoading:
                           snapshot.connectionState == ConnectionState.waiting,
+                      interestIdsStream: _interestIdsStream,
+                      onToggleInterest: _toggleInterest,
                       onTap: _openEventDetail,
                     ),
                   ),
@@ -458,6 +495,8 @@ class _EventList extends StatelessWidget {
     required this.events,
     required this.weekdayLabel,
     required this.isLoading,
+    required this.interestIdsStream,
+    required this.onToggleInterest,
     required this.onTap,
   });
 
@@ -465,6 +504,8 @@ class _EventList extends StatelessWidget {
   final List<CalendarEvent> events;
   final String Function(int weekday) weekdayLabel;
   final bool isLoading;
+  final Stream<Set<String>> interestIdsStream;
+  final void Function(CalendarEvent event, bool isInterested) onToggleInterest;
   final void Function(CalendarEvent event) onTap;
 
   @override
@@ -504,85 +545,33 @@ class _EventList extends StatelessWidget {
             child: const Text('この日の予定はありません'),
           )
         else
-          Column(
-            children: events
-                .map(
-                  (event) => GestureDetector(
-                    onTap: event.isClosedDay ? null : () => onTap(event),
-                    child: Container(
-                      width: double.infinity,
-                      margin: const EdgeInsets.only(bottom: 8),
-                      padding: const EdgeInsets.symmetric(
-                        vertical: 14,
-                        horizontal: 18,
-                      ),
-                      decoration: BoxDecoration(
-                        color: event.color.withOpacity(0.15),
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(
-                          color: event.color.withOpacity(0.4),
-                        ),
-                      ),
-                      child: _EventTile(event: event),
-                    ),
-                  ),
-                )
-                .toList(),
+          StreamBuilder<Set<String>>(
+            stream: interestIdsStream,
+            builder: (context, snapshot) {
+              final interestedIds = snapshot.data ?? const <String>{};
+              return Column(
+                children: events
+                    .map(
+                      (event) {
+                        final isInterested = interestedIds.contains(event.id);
+                        return Padding(
+                          padding: const EdgeInsets.only(bottom: 12),
+                          child: EventListCard(
+                            event: event,
+                            isInterested: isInterested,
+                            showFavoriteButton: false,
+                            onTap:
+                                event.isClosedDay ? null : () => onTap(event),
+                            onToggleInterest: () =>
+                                onToggleInterest(event, isInterested),
+                          ),
+                        );
+                      },
+                    )
+                    .toList(),
+              );
+            },
           ),
-      ],
-    );
-  }
-}
-
-class _EventTile extends StatelessWidget {
-  const _EventTile({required this.event});
-
-  final CalendarEvent event;
-
-  String get _timeLabel {
-    String format(DateTime dt) =>
-        '${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}';
-    return '${format(event.startDateTime)}〜${format(event.endDateTime)}';
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Icon(Icons.event, color: event.color),
-        const SizedBox(width: 12),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                event.name,
-                style: Theme.of(context)
-                    .textTheme
-                    .titleSmall
-                    ?.copyWith(fontWeight: FontWeight.bold),
-              ),
-              const SizedBox(height: 4),
-              Text(
-                '主催: ${event.organizer.isNotEmpty ? event.organizer : '未設定'} / 時間: $_timeLabel',
-                style: Theme.of(context)
-                    .textTheme
-                    .bodySmall
-                    ?.copyWith(color: event.color),
-              ),
-              if (event.content.isNotEmpty) ...[
-                const SizedBox(height: 6),
-                Text(
-                  event.content,
-                  style: Theme.of(context).textTheme.bodyMedium,
-                  maxLines: 3,
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ],
-            ],
-          ),
-        ),
       ],
     );
   }
