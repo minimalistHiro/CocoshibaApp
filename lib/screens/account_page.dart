@@ -7,12 +7,15 @@ import 'existing_events_page.dart';
 import 'login_info_update_page.dart';
 import 'notification_settings_page.dart';
 import 'closed_days_settings_page.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import '../services/user_chat_service.dart';
 import 'owner_settings_page.dart';
 import 'menu_management_page.dart';
 import 'campaigns_page.dart';
 import 'profile_edit_page.dart';
 import 'support_help_page.dart';
 import 'home_screen_editor_page.dart';
+import 'user_chat_support_page.dart';
 
 class AccountPage extends StatefulWidget {
   const AccountPage({super.key});
@@ -23,13 +26,24 @@ class AccountPage extends StatefulWidget {
 
 class _AccountPageState extends State<AccountPage> {
   final FirebaseAuthService _authService = FirebaseAuthService();
+  final UserChatService _chatService = UserChatService();
   late final Stream<Map<String, dynamic>?> _profileStream;
+  Stream<DateTime?>? _supportChatReadStream;
+  Stream<bool>? _adminChatUnreadStream;
   bool _isDeleting = false;
 
   @override
   void initState() {
     super.initState();
     _profileStream = _authService.watchCurrentUserProfile();
+    final userId = _authService.currentUser?.uid;
+    if (userId != null) {
+      _supportChatReadStream = _chatService.watchLastReadAt(
+        threadId: userId,
+        viewerId: userId,
+      );
+      _adminChatUnreadStream = _chatService.watchHasUnreadForOwner(userId);
+    }
   }
 
   Future<void> _logout(BuildContext context) async {
@@ -42,6 +56,82 @@ class _AccountPageState extends State<AccountPage> {
     } catch (_) {
       messenger.showSnackBar(const SnackBar(content: Text('ログアウトに失敗しました')));
     }
+  }
+
+  Widget _buildSupportBadge() {
+    final userId = _authService.currentUser?.uid;
+    if (userId == null || _supportChatReadStream == null) {
+      return const Icon(Icons.chevron_right);
+    }
+
+    return StreamBuilder<DateTime?>(
+      stream: _supportChatReadStream,
+      builder: (context, readSnapshot) {
+        final lastRead = readSnapshot.data;
+        return StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
+          stream: FirebaseFirestore.instance
+              .collection('userChats')
+              .doc(userId)
+              .snapshots(),
+          builder: (context, metaSnapshot) {
+            final data = metaSnapshot.data?.data();
+            final lastMessageAt = data?['lastMessageAt'] as Timestamp?;
+            final senderId = (data?['lastMessageSenderId'] as String?) ?? '';
+            final hasUnread = lastMessageAt != null &&
+                (lastRead == null ||
+                    lastRead.isBefore(lastMessageAt.toDate())) &&
+                senderId.isNotEmpty &&
+                senderId != userId;
+            return Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(Icons.chevron_right),
+                if (hasUnread) ...[
+                  const SizedBox(width: 6),
+                  Container(
+                    width: 12,
+                    height: 12,
+                    decoration: const BoxDecoration(
+                      color: Colors.redAccent,
+                      shape: BoxShape.circle,
+                    ),
+                  ),
+                ],
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+
+  Widget _buildAdminChatBadge() {
+    if (_adminChatUnreadStream == null) {
+      return const Icon(Icons.chevron_right);
+    }
+    return StreamBuilder<bool>(
+      stream: _adminChatUnreadStream,
+      builder: (context, snapshot) {
+        final hasUnread = snapshot.data ?? false;
+        return Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(Icons.chevron_right),
+            if (hasUnread) ...[
+              const SizedBox(width: 6),
+              Container(
+                width: 12,
+                height: 12,
+                decoration: const BoxDecoration(
+                  color: Colors.redAccent,
+                  shape: BoxShape.circle,
+                ),
+              ),
+            ],
+          ],
+        );
+      },
+    );
   }
 
   Future<void> _deleteAccount(BuildContext context) async {
@@ -187,6 +277,7 @@ class _AccountPageState extends State<AccountPage> {
     required String title,
     String? subtitle,
     VoidCallback? onTap,
+    Widget? trailing,
   }) {
     return Card(
       child: ListTile(
@@ -194,7 +285,7 @@ class _AccountPageState extends State<AccountPage> {
         leading: Icon(icon),
         title: Text(title),
         subtitle: subtitle != null ? Text(subtitle) : null,
-        trailing: const Icon(Icons.chevron_right),
+        trailing: trailing ?? const Icon(Icons.chevron_right),
       ),
     );
   }
@@ -282,7 +373,7 @@ class _AccountPageState extends State<AccountPage> {
               context: context,
               icon: Icons.lock_outline,
               title: 'ログイン情報変更',
-              subtitle: 'メールアドレスやパスワードを更新',
+              subtitle: 'パスワードを更新',
               onTap: () => Navigator.of(context).push(
                 MaterialPageRoute(
                   builder: (_) => const LoginInfoUpdatePage(),
@@ -315,23 +406,31 @@ class _AccountPageState extends State<AccountPage> {
                 ),
               ),
             ),
-            _buildSettingCard(
-              context: context,
-              icon: Icons.tune,
-              title: 'アプリ設定',
-              subtitle: '表示やテーマなどのカスタマイズ',
-              onTap: () => _showFeatureUnavailable(context, 'アプリ設定'),
-            ),
-            _buildSettingCard(
-              context: context,
-              icon: Icons.help_outline,
-              title: 'サポート・ヘルプ',
-              subtitle: 'お問い合わせ・FAQ・ポリシー',
-              onTap: () => Navigator.of(context).push(
-                MaterialPageRoute(
-                  builder: (_) => const SupportHelpPage(),
-                ),
-              ),
+            StreamBuilder<Map<String, dynamic>?>(
+              stream: _profileStream,
+              builder: (context, snapshot) {
+                final isOwner = snapshot.data?['isOwner'] == true;
+                if (isOwner) {
+                  return const SizedBox.shrink();
+                }
+                return Column(
+                  children: [
+                    _buildSettingCard(
+                      context: context,
+                      icon: Icons.help_outline,
+                      title: 'サポート・ヘルプ',
+                      subtitle: 'お問い合わせ・FAQ・ポリシー',
+                      trailing: _buildSupportBadge(),
+                      onTap: () => Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (_) => const SupportHelpPage(),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                  ],
+                );
+              },
             ),
             const SizedBox(height: 16),
             StreamBuilder<Map<String, dynamic>?>(
@@ -345,6 +444,18 @@ class _AccountPageState extends State<AccountPage> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     _buildSectionHeader('管理者設定'),
+                    _buildSettingCard(
+                      context: context,
+                      icon: Icons.support_agent_outlined,
+                      title: 'ユーザーチャットサポート',
+                      subtitle: 'ユーザーとのチャット履歴を確認',
+                      trailing: isOwner ? _buildAdminChatBadge() : null,
+                      onTap: () => Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (_) => UserChatSupportPage(),
+                        ),
+                      ),
+                    ),
                     _buildSettingCard(
                       context: context,
                       icon: Icons.dashboard_customize_outlined,
@@ -423,6 +534,8 @@ class _AccountPageState extends State<AccountPage> {
               label: const Text('ログアウト'),
               style: FilledButton.styleFrom(
                 minimumSize: const Size.fromHeight(48),
+                backgroundColor: Theme.of(context).colorScheme.error,
+                foregroundColor: Theme.of(context).colorScheme.onError,
               ),
             ),
             const SizedBox(height: 16),

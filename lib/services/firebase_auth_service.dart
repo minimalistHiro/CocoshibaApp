@@ -1,8 +1,8 @@
 import 'dart:typed_data';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:cloud_functions/cloud_functions.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/foundation.dart';
 
@@ -11,13 +11,16 @@ class FirebaseAuthService {
     FirebaseAuth? firebaseAuth,
     FirebaseFirestore? firestore,
     FirebaseStorage? storage,
+    FirebaseFunctions? functions,
   })  : _auth = firebaseAuth ?? FirebaseAuth.instance,
         _firestore = firestore ?? FirebaseFirestore.instance,
-        _storage = storage ?? FirebaseStorage.instance;
+        _storage = storage ?? FirebaseStorage.instance,
+        _functions = functions ?? FirebaseFunctions.instance;
 
   final FirebaseAuth _auth;
   final FirebaseFirestore _firestore;
   final FirebaseStorage _storage;
+  final FirebaseFunctions _functions;
 
   User? get currentUser => _auth.currentUser;
 
@@ -103,6 +106,7 @@ class FirebaseAuthService {
         'points': 0,
         'createdAt': FieldValue.serverTimestamp(),
         'lastLoginAt': FieldValue.serverTimestamp(),
+        'emailVerified': false,
       };
 
       if (trimmedBio != null && trimmedBio.isNotEmpty) {
@@ -179,12 +183,7 @@ class FirebaseAuthService {
         .set(updateData, SetOptions(merge: true));
   }
 
-  /// Updates email and/or password.
-  ///
-  /// Returns `true` if an email verification is required before the email
-  /// change takes effect.
-  Future<bool> updateLoginInfo({
-    required String email,
+  Future<void> updateLoginInfo({
     required String currentPassword,
     String? newPassword,
   }) async {
@@ -196,37 +195,32 @@ class FirebaseAuthService {
       );
     }
 
-    final trimmedEmail = email.trim();
+    final userEmail = user.email;
+    if (userEmail == null || userEmail.trim().isEmpty) {
+      throw FirebaseAuthException(
+        code: 'invalid-email',
+        message: 'メールアドレスが設定されていません',
+      );
+    }
+
     final trimmedNewPassword = newPassword?.trim();
     final credential = EmailAuthProvider.credential(
-      email: user.email ?? trimmedEmail,
+      email: userEmail,
       password: currentPassword,
     );
 
     await user.reauthenticateWithCredential(credential);
 
-    final bool emailChanged =
-        trimmedEmail.isNotEmpty && trimmedEmail != (user.email ?? '').trim();
-
-    if (emailChanged) {
-      await user.verifyBeforeUpdateEmail(trimmedEmail);
-    }
-
     if (trimmedNewPassword != null && trimmedNewPassword.isNotEmpty) {
       await user.updatePassword(trimmedNewPassword);
     }
 
-    final updateData = <String, dynamic>{
-      'email': trimmedEmail,
-      'updatedAt': FieldValue.serverTimestamp(),
-    };
-
-    await _firestore
-        .collection('users')
-        .doc(user.uid)
-        .set(updateData, SetOptions(merge: true));
-
-    return emailChanged;
+    await _firestore.collection('users').doc(user.uid).set(
+      {
+        'updatedAt': FieldValue.serverTimestamp(),
+      },
+      SetOptions(merge: true),
+    );
   }
 
   Future<void> deleteAccount() async {
@@ -289,5 +283,42 @@ class FirebaseAuthService {
       debugPrint('Failed to update last login: $error');
       debugPrint('$stackTrace');
     }
+  }
+
+  Future<void> sendEmailVerificationCode({String? email}) async {
+    final user = _auth.currentUser;
+    if (user == null) {
+      throw FirebaseAuthException(
+        code: 'no-current-user',
+        message: 'ログインしていません',
+      );
+    }
+
+    final targetEmail = (email ?? user.email ?? '').trim();
+    if (targetEmail.isEmpty) {
+      throw FirebaseAuthException(
+        code: 'invalid-email',
+        message: 'メールアドレスが設定されていません',
+      );
+    }
+
+    final callable = _functions.httpsCallable('requestEmailVerification');
+    await callable.call({'email': targetEmail});
+  }
+
+  Future<void> verifyEmailCode(String code) async {
+    final user = _auth.currentUser;
+    if (user == null) {
+      throw FirebaseAuthException(
+        code: 'no-current-user',
+        message: 'ログインしていません',
+      );
+    }
+
+    final trimmedCode = code.trim();
+    final callable = _functions.httpsCallable('verifyEmailCode');
+    await callable.call({'code': trimmedCode});
+
+    await user.reload();
   }
 }

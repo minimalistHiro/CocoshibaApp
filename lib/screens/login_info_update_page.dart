@@ -50,8 +50,7 @@ class _LoginInfoUpdatePageState extends State<LoginInfoUpdatePage> {
     final navigator = Navigator.of(context);
 
     try {
-      final verificationRequired = await _authService.updateLoginInfo(
-        email: _emailController.text,
+      await _authService.updateLoginInfo(
         currentPassword: _currentPasswordController.text,
         newPassword: _newPasswordController.text.isNotEmpty
             ? _newPasswordController.text
@@ -59,13 +58,7 @@ class _LoginInfoUpdatePageState extends State<LoginInfoUpdatePage> {
       );
       if (!mounted) return;
       messenger.showSnackBar(
-        SnackBar(
-          content: Text(
-            verificationRequired
-                ? '新しいメールアドレス宛に確認メールを送信しました。メール内の手順を完了すると変更が適用されます。'
-                : 'ログイン情報を更新しました',
-          ),
-        ),
+        const SnackBar(content: Text('ログイン情報を更新しました')),
       );
       navigator.pop();
     } on FirebaseAuthException catch (e) {
@@ -102,17 +95,10 @@ class _LoginInfoUpdatePageState extends State<LoginInfoUpdatePage> {
                   controller: _emailController,
                   decoration: const InputDecoration(
                     labelText: 'メールアドレス',
+                    helperText: 'メールアドレスは変更できません',
                   ),
+                  readOnly: true,
                   keyboardType: TextInputType.emailAddress,
-                  validator: (value) {
-                    if (value == null || value.trim().isEmpty) {
-                      return 'メールアドレスを入力してください';
-                    }
-                    if (!RegExp(r'^[^@]+@[^@]+\.[^@]+').hasMatch(value.trim())) {
-                      return '有効なメールアドレスを入力してください';
-                    }
-                    return null;
-                  },
                 ),
                 const SizedBox(height: 24),
                 TextFormField(
@@ -144,7 +130,7 @@ class _LoginInfoUpdatePageState extends State<LoginInfoUpdatePage> {
                 TextFormField(
                   controller: _newPasswordController,
                   decoration: InputDecoration(
-                    labelText: '新しいパスワード（任意）',
+                    labelText: '新しいパスワード',
                     suffixIcon: IconButton(
                       icon: Icon(
                         _showNewPassword
@@ -161,7 +147,7 @@ class _LoginInfoUpdatePageState extends State<LoginInfoUpdatePage> {
                   obscureText: !_showNewPassword,
                   validator: (value) {
                     if (value == null || value.isEmpty) {
-                      return null;
+                      return '新しいパスワードを入力してください';
                     }
                     if (value.length < 6) {
                       return '6文字以上で入力してください';
@@ -190,9 +176,6 @@ class _LoginInfoUpdatePageState extends State<LoginInfoUpdatePage> {
                   obscureText: !_showConfirmPassword,
                   validator: (value) {
                     final newPassword = _newPasswordController.text;
-                    if (newPassword.isEmpty) {
-                      return null;
-                    }
                     if (value != newPassword) {
                       return '新しいパスワードが一致しません';
                     }
@@ -200,10 +183,6 @@ class _LoginInfoUpdatePageState extends State<LoginInfoUpdatePage> {
                   },
                 ),
                 const SizedBox(height: 16),
-                Text(
-                  'メールアドレスのみ変更する場合は新しいパスワード欄を空欄のままにしてください。',
-                  style: Theme.of(context).textTheme.bodySmall,
-                ),
                 const SizedBox(height: 32),
                 FilledButton.icon(
                   onPressed: _isUpdating ? null : _updateLoginInfo,

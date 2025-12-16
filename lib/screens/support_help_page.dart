@@ -1,8 +1,13 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../models/owner_contact_info.dart';
+import '../models/user_chat_models.dart';
 import '../services/owner_settings_service.dart';
+import '../services/user_chat_service.dart';
+import 'user_chat_thread_page.dart';
 import 'faq_page.dart';
 
 class SupportHelpPage extends StatefulWidget {
@@ -28,6 +33,38 @@ class _SupportHelpPageState extends State<SupportHelpPage> {
         SnackBar(content: Text('${uri.scheme}を開けませんでした')),
       );
     }
+  }
+
+  void _openSupportChat(BuildContext context) {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('チャットを利用するにはログインが必要です')),
+      );
+      return;
+    }
+
+    final displayName = user.displayName?.trim();
+    final email = user.email?.trim();
+    final thread = UserChatThread(
+      id: user.uid,
+      userName: (displayName != null && displayName.isNotEmpty)
+          ? displayName
+          : (email ?? 'あなた'),
+      avatarUrl: user.photoURL ?? '',
+      lastMessage: '',
+      lastMessageSenderId: '',
+      updatedAt: DateTime.now(),
+    );
+
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => UserChatThreadPage(
+          thread: thread,
+          title: 'チャットサポート',
+        ),
+      ),
+    );
   }
 
   void _showMissingInfoMessage(BuildContext context, String label) {
@@ -79,6 +116,15 @@ class _SupportHelpPageState extends State<SupportHelpPage> {
 
   @override
   Widget build(BuildContext context) {
+    final userId = FirebaseAuth.instance.currentUser?.uid;
+    final chatService = UserChatService();
+    final badgeStream = userId != null
+        ? chatService.watchLastReadAt(
+            threadId: userId,
+            viewerId: userId,
+          )
+        : null;
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('サポート・ヘルプ'),
@@ -130,11 +176,46 @@ class _SupportHelpPageState extends State<SupportHelpPage> {
                       leading: const Icon(Icons.chat),
                       title: const Text('チャットサポート'),
                       subtitle: Text(_displayValue(contactInfo.businessHours)),
-                      trailing: const Icon(Icons.chevron_right),
-                      onTap: () => _openSiteLink(
-                        context,
-                        contactInfo.siteUrl,
-                      ),
+                      trailing: badgeStream == null
+                          ? const Icon(Icons.chevron_right)
+                          : StreamBuilder<DateTime?>(
+                              stream: badgeStream,
+                              builder: (context, readSnapshot) {
+                                final lastRead = readSnapshot.data;
+                                return StreamBuilder<Map<String, dynamic>?>(
+                                  stream: chatService
+                                      .threadMetaStream(threadId: userId!),
+                                  builder: (context, metaSnapshot) {
+                                    final data = metaSnapshot.data;
+                                    final lastMessageAt =
+                                        data?['lastMessageAt'] as Timestamp?;
+                                    final senderId =
+                                        (data?['lastMessageSenderId']
+                                                as String?) ??
+                                            '';
+                                    final hasUnread = lastMessageAt != null &&
+                                        (lastRead == null ||
+                                            lastRead.isBefore(
+                                              lastMessageAt.toDate(),
+                                            )) &&
+                                        senderId.isNotEmpty &&
+                                        senderId != userId;
+                                    if (hasUnread) {
+                                      return Container(
+                                        width: 14,
+                                        height: 14,
+                                        decoration: const BoxDecoration(
+                                          color: Colors.redAccent,
+                                          shape: BoxShape.circle,
+                                        ),
+                                      );
+                                    }
+                                    return const Icon(Icons.chevron_right);
+                                  },
+                                );
+                              },
+                            ),
+                      onTap: () => _openSupportChat(context),
                     ),
                   ),
                   Card(

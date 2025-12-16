@@ -1,7 +1,9 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
 import 'screens/auth_choice_page.dart';
+import 'screens/email_verification_page.dart';
 import 'screens/main_tab_scaffold.dart';
 
 class CocoshibaApp extends StatelessWidget {
@@ -60,7 +62,27 @@ class _AuthGate extends StatelessWidget {
         if (user == null) {
           return const AuthChoicePage();
         }
-        return const MainTabScaffold();
+        return StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
+          stream: FirebaseFirestore.instance
+              .collection('users')
+              .doc(user.uid)
+              .snapshots(),
+          builder: (context, userSnapshot) {
+            if (userSnapshot.connectionState == ConnectionState.waiting) {
+              return const Scaffold(
+                body: Center(child: CircularProgressIndicator()),
+              );
+            }
+
+            final data = userSnapshot.data?.data();
+            final emailVerified =
+                user.emailVerified || data?['emailVerified'] == true;
+            if (!emailVerified) {
+              return EmailVerificationPage(email: user.email ?? '');
+            }
+            return const MainTabScaffold();
+          },
+        );
       },
     );
   }
