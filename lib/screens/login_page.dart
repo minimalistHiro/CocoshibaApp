@@ -18,6 +18,7 @@ class _LoginPageState extends State<LoginPage> {
   final _authService = FirebaseAuthService();
 
   bool _isLoading = false;
+  bool _isGoogleLoading = false;
   bool _passwordVisible = false;
 
   @override
@@ -31,7 +32,10 @@ class _LoginPageState extends State<LoginPage> {
     if (!_formKey.currentState!.validate()) return;
 
     FocusScope.of(context).unfocus();
-    setState(() => _isLoading = true);
+    setState(() {
+      _isLoading = true;
+      _isGoogleLoading = false;
+    });
 
     try {
       await _authService.signIn(
@@ -48,6 +52,29 @@ class _LoginPageState extends State<LoginPage> {
     } finally {
       if (mounted) {
         setState(() => _isLoading = false);
+      }
+    }
+  }
+
+  Future<void> _signInWithGoogle() async {
+    FocusScope.of(context).unfocus();
+    setState(() {
+      _isGoogleLoading = true;
+      _isLoading = false;
+    });
+
+    try {
+      await _authService.signInWithGoogle();
+
+      if (!mounted) return;
+      Navigator.of(context).popUntil((route) => route.isFirst);
+    } on FirebaseAuthException catch (e) {
+      _showError(e.message ?? 'Googleログインに失敗しました');
+    } catch (_) {
+      _showError('Googleログインに失敗しました');
+    } finally {
+      if (mounted) {
+        setState(() => _isGoogleLoading = false);
       }
     }
   }
@@ -94,7 +121,9 @@ class _LoginPageState extends State<LoginPage> {
                     onPressed: () =>
                         setState(() => _passwordVisible = !_passwordVisible),
                     icon: Icon(
-                      _passwordVisible ? Icons.visibility_off : Icons.visibility,
+                      _passwordVisible
+                          ? Icons.visibility_off
+                          : Icons.visibility,
                     ),
                   ),
                 ),
@@ -108,7 +137,7 @@ class _LoginPageState extends State<LoginPage> {
               ),
               const SizedBox(height: 24),
               FilledButton(
-                onPressed: _isLoading ? null : _submit,
+                onPressed: (_isLoading || _isGoogleLoading) ? null : _submit,
                 child: _isLoading
                     ? const SizedBox(
                         width: 20,
@@ -118,6 +147,19 @@ class _LoginPageState extends State<LoginPage> {
                     : const Text('ログイン'),
               ),
               const SizedBox(height: 16),
+              OutlinedButton.icon(
+                onPressed:
+                    (_isLoading || _isGoogleLoading) ? null : _signInWithGoogle,
+                icon: const Icon(Icons.login),
+                label: _isGoogleLoading
+                    ? const SizedBox(
+                        width: 20,
+                        height: 20,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Text('Googleでログイン/登録'),
+              ),
+              const SizedBox(height: 8),
               TextButton(
                 onPressed: _isLoading ? null : _openSignUp,
                 child: const Text('アカウントがない？新規作成へ'),

@@ -5,6 +5,7 @@ import 'package:cloud_functions/cloud_functions.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/foundation.dart';
+import 'package:google_sign_in/google_sign_in.dart';
 
 class FirebaseAuthService {
   FirebaseAuthService({
@@ -21,6 +22,7 @@ class FirebaseAuthService {
   final FirebaseFirestore _firestore;
   final FirebaseStorage _storage;
   final FirebaseFunctions _functions;
+  final GoogleSignIn _googleSignIn = GoogleSignIn();
 
   User? get currentUser => _auth.currentUser;
 
@@ -136,7 +138,62 @@ class FirebaseAuthService {
     return credential;
   }
 
-  Future<void> signOut() => _auth.signOut();
+  Future<void> signOut() async {
+    try {
+      await _googleSignIn.signOut();
+    } catch (_) {
+      // ignore sign-out errors for GoogleSignIn to avoid blocking Firebase sign-out
+    }
+    await _auth.signOut();
+  }
+
+  Future<UserCredential> _signInWithGoogleWeb() async {
+    final provider = GoogleAuthProvider();
+    final credential = await _auth.signInWithPopup(provider);
+    final user = credential.user;
+
+    if (user != null) {
+      await _ensureUserDocument(user);
+    }
+    return credential;
+  }
+
+  Future<UserCredential> _signInWithGoogleMobile() async {
+    final googleUser = await _googleSignIn.signIn();
+    if (googleUser == null) {
+      throw FirebaseAuthException(
+        code: 'canceled',
+        message: 'Googleログインがキャンセルされました',
+      );
+    }
+
+    final googleAuth = await googleUser.authentication;
+    final credential = GoogleAuthProvider.credential(
+      accessToken: googleAuth.accessToken,
+      idToken: googleAuth.idToken,
+    );
+
+    final userCredential = await _auth.signInWithCredential(credential);
+    final user = userCredential.user;
+
+    if (user != null) {
+      await _ensureUserDocument(user, googleAccount: googleUser);
+    }
+
+    return userCredential;
+  }
+
+  Future<UserCredential> signInWithGoogle() async {
+    final userCredential =
+        kIsWeb ? await _signInWithGoogleWeb() : await _signInWithGoogleMobile();
+
+    final user = userCredential.user;
+    if (user != null) {
+      await _updateLastLogin(user);
+    }
+
+    return userCredential;
+  }
 
   Future<void> updateProfile({
     required String name,
@@ -320,5 +377,56 @@ class FirebaseAuthService {
     await callable.call({'code': trimmedCode});
 
     await user.reload();
+  }
+
+  Future<void> _ensureUserDocument(
+    User user, {
+    GoogleSignInAccount? googleAccount,
+  }) async {
+    final docRef = _firestore.collection('users').doc(user.uid);
+    final snapshot = await docRef.get();
+
+    final displayName =
+        (user.displayName ?? googleAccount?.displayName ?? '').trim();
+    final email = (user.email ?? googleAccount?.email ?? '').trim();
+    final photoUrl = (user.photoURL ?? googleAccount?.photoUrl ?? '').trim();
+
+    if (!snapshot.exists) {
+      await docRef.set({
+        'name': displayName.isNotEmpty ? displayName : '未設定',
+        'email': email,
+        'ageGroup': '',
+        'area': '',
+        'photoUrl': photoUrl.isNotEmpty ? photoUrl : null,
+        'isOwner': false,
+        'isSubOwner': false,
+        'points': 0,
+        'createdAt': FieldValue.serverTimestamp(),
+        'lastLoginAt': FieldValue.serverTimestamp(),
+        'emailVerified': user.emailVerified,
+      });
+      return;
+    }
+
+    final data = snapshot.data();
+    final Map<String, dynamic> updates = {
+      'lastLoginAt': FieldValue.serverTimestamp(),
+    };
+
+    final currentName = (data?['name'] as String?)?.trim() ?? '';
+    final currentEmail = (data?['email'] as String?)?.trim() ?? '';
+    final currentPhotoUrl = (data?['photoUrl'] as String?)?.trim() ?? '';
+
+    if (currentName.isEmpty && displayName.isNotEmpty) {
+      updates['name'] = displayName;
+    }
+    if (currentEmail.isEmpty && email.isNotEmpty) {
+      updates['email'] = email;
+    }
+    if (currentPhotoUrl.isEmpty && photoUrl.isNotEmpty) {
+      updates['photoUrl'] = photoUrl;
+    }
+
+    await docRef.set(updates, SetOptions(merge: true));
   }
 }

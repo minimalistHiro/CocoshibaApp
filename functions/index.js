@@ -1,12 +1,32 @@
+const crypto = require('crypto');
 const functions = require('firebase-functions');
 const admin = require('firebase-admin');
+const nodemailer = require('nodemailer');
 
 admin.initializeApp();
 
 const db = admin.firestore();
 const messaging = admin.messaging();
+const mailConfig = functions.config().mail || {};
+
+const EMAIL_VERIFICATION_COLLECTION = 'emailVerifications';
+const EMAIL_CODE_EXPIRATION_MINUTES = 10;
+const EMAIL_CODE_MAX_ATTEMPTS = 5;
 
 const BATCH_SIZE = 500;
+
+const mailTransport =
+  mailConfig.host && mailConfig.user && mailConfig.pass
+    ? nodemailer.createTransport({
+        host: mailConfig.host,
+        port: Number(mailConfig.port || 587),
+        secure: Number(mailConfig.port || 587) === 465,
+        auth: {
+          user: mailConfig.user,
+          pass: mailConfig.pass,
+        },
+      })
+    : null;
 
 exports.onNotificationCreated = functions
   .region('us-central1')
@@ -195,6 +215,145 @@ async function collectOwnerTokens() {
   return { tokens, tokenOwners };
 }
 
+exports.requestEmailVerification = functions
+  .region('us-central1')
+  .https.onCall(async (data, context) => {
+    if (!context.auth) {
+      throw new functions.https.HttpsError(
+        'unauthenticated',
+        'You must be signed in to request verification.'
+      );
+    }
+
+    if (!mailTransport) {
+      functions.logger.error(
+        'Mail transport is not configured. Set functions.config().mail.'
+      );
+      throw new functions.https.HttpsError(
+        'failed-precondition',
+        'メール送信設定が行われていません'
+      );
+    }
+
+    const email = (data?.email || '').toString().trim();
+    if (!email) {
+      throw new functions.https.HttpsError(
+        'invalid-argument',
+        'メールアドレスが指定されていません'
+      );
+    }
+
+    const uid = context.auth.uid;
+    const code = generateSixDigitCode();
+    const codeHash = hashCode(code);
+    const expiresAt = admin.firestore.Timestamp.fromDate(
+      new Date(Date.now() + EMAIL_CODE_EXPIRATION_MINUTES * 60 * 1000)
+    );
+
+    await db.collection(EMAIL_VERIFICATION_COLLECTION).doc(uid).set(
+      {
+        email,
+        codeHash,
+        status: 'pending',
+        attempts: 0,
+        expiresAt,
+        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      },
+      { merge: true }
+    );
+
+    await sendVerificationEmail(email, code);
+    functions.logger.info('Verification email sent', { uid, email });
+
+    return { expiresAt: expiresAt.toMillis() };
+  });
+
+exports.verifyEmailCode = functions
+  .region('us-central1')
+  .https.onCall(async (data, context) => {
+    if (!context.auth) {
+      throw new functions.https.HttpsError(
+        'unauthenticated',
+        'You must be signed in to verify the code.'
+      );
+    }
+
+    const code = (data?.code || '').toString().trim();
+    if (!/^[0-9]{6}$/.test(code)) {
+      throw new functions.https.HttpsError(
+        'invalid-argument',
+        '6桁の認証コードを入力してください'
+      );
+    }
+
+    const uid = context.auth.uid;
+    const docRef = db.collection(EMAIL_VERIFICATION_COLLECTION).doc(uid);
+    const snapshot = await docRef.get();
+    if (!snapshot.exists) {
+      throw new functions.https.HttpsError(
+        'failed-precondition',
+        '認証コードが発行されていません'
+      );
+    }
+
+    const dataMap = snapshot.data() || {};
+    if (dataMap.status === 'verified') {
+      return { verified: true };
+    }
+
+    const expiresAt = dataMap.expiresAt;
+    if (expiresAt?.toMillis && expiresAt.toMillis() < Date.now()) {
+      throw new functions.https.HttpsError(
+        'deadline-exceeded',
+        '認証コードの有効期限が切れています'
+      );
+    }
+
+    const attempts =
+      typeof dataMap.attempts === 'number' ? dataMap.attempts : 0;
+    if (attempts >= EMAIL_CODE_MAX_ATTEMPTS) {
+      throw new functions.https.HttpsError(
+        'resource-exhausted',
+        '認証コードの入力回数が上限に達しました'
+      );
+    }
+
+    const expectedHash = dataMap.codeHash;
+    if (expectedHash !== hashCode(code)) {
+      await docRef.update({
+        attempts: attempts + 1,
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      });
+      throw new functions.https.HttpsError(
+        'permission-denied',
+        '認証コードが間違っています'
+      );
+    }
+
+    await Promise.all([
+      docRef.update({
+        status: 'verified',
+        attempts: attempts + 1,
+        verifiedAt: admin.firestore.FieldValue.serverTimestamp(),
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      }),
+      db
+        .collection('users')
+        .doc(uid)
+        .set(
+          {
+            emailVerified: true,
+            emailVerifiedAt: admin.firestore.FieldValue.serverTimestamp(),
+            updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+          },
+          { merge: true }
+        ),
+    ]);
+
+    return { verified: true };
+  });
+
 async function sendAnnouncementBatches({
   tokens,
   tokenOwners,
@@ -260,6 +419,33 @@ async function sendAnnouncementBatches({
   if (invalidTokens.size > 0) {
     await removeInvalidTokens(invalidTokens, tokenOwners);
   }
+}
+
+function generateSixDigitCode() {
+  return Math.floor(100000 + Math.random() * 900000).toString();
+}
+
+function hashCode(code) {
+  return crypto.createHash('sha256').update(code).digest('hex');
+}
+
+async function sendVerificationEmail(email, code) {
+  if (!mailTransport) {
+    throw new functions.https.HttpsError(
+      'failed-precondition',
+      'メール送信設定が行われていません'
+    );
+  }
+
+  const from = mailConfig.from || mailConfig.user;
+  const mailOptions = {
+    from,
+    to: email,
+    subject: 'ココシバ アカウントのメール認証コード',
+    text: `以下の6桁のコードをアプリに入力してください。\n\n${code}\n\n有効期限：${EMAIL_CODE_EXPIRATION_MINUTES}分\n\nこのメールに心当たりがない場合は破棄してください。`,
+  };
+
+  await mailTransport.sendMail(mailOptions);
 }
 
 async function removeInvalidTokens(invalidTokens, tokenOwners) {

@@ -12,7 +12,20 @@
           "package_name": "com.groumap.cocoshiba"
         }
       },
-      "oauth_client": [],
+      "oauth_client": [
+        {
+          "client_id": "618793511488-540aeob5cc0pof5qb4umjlkhob0liiva.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.groumap.cocoshiba",
+            "certificate_hash": "0aafcf2d3533a6b4997a408fa3f63b0fb6d3a5d6"
+          }
+        },
+        {
+          "client_id": "618793511488-8i0gcco819toc78i0ru3fld999dhkrom.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
       "api_key": [
         {
           "current_key": "AIzaSyD7RYxgZLOaTab0nKw42PPmHZ5yir9h-UQ"
@@ -20,7 +33,19 @@
       ],
       "services": {
         "appinvite_service": {
-          "other_platform_oauth_client": []
+          "other_platform_oauth_client": [
+            {
+              "client_id": "618793511488-8i0gcco819toc78i0ru3fld999dhkrom.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "618793511488-etr7cn3usep5lm1a6vhdi56u0grdrbu0.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.groumap.cocoshiba"
+              }
+            }
+          ]
         }
       }
     }

@@ -26,6 +26,7 @@ class _SignUpPageState extends State<SignUpPage> {
   final _picker = ImagePicker();
   final _authService = FirebaseAuthService();
   bool _isLoading = false;
+  bool _isGoogleLoading = false;
   bool _passwordVisible = false;
   bool _confirmPasswordVisible = false;
   Uint8List? _profileImageBytes;
@@ -63,6 +64,7 @@ class _SignUpPageState extends State<SignUpPage> {
 
   Future<void> _submit() async {
     if (!_credentialsFormKey.currentState!.validate()) return;
+    if (_isGoogleLoading) return;
     if (_selectedAgeGroup == null || _selectedArea == null) {
       setState(() => _currentStep = _SignUpStep.userInfo);
       _showError('ユーザー情報を入力してください');
@@ -70,7 +72,10 @@ class _SignUpPageState extends State<SignUpPage> {
     }
 
     FocusScope.of(context).unfocus();
-    setState(() => _isLoading = true);
+    setState(() {
+      _isLoading = true;
+      _isGoogleLoading = false;
+    });
 
     try {
       Uint8List? imageBytes = _profileImageBytes;
@@ -102,13 +107,39 @@ class _SignUpPageState extends State<SignUpPage> {
     }
   }
 
+  Future<void> _signUpWithGoogle() async {
+    if (_isLoading) return;
+
+    FocusScope.of(context).unfocus();
+    setState(() => _isGoogleLoading = true);
+
+    try {
+      await _authService.signInWithGoogle();
+
+      if (!mounted) return;
+      Navigator.of(context).popUntil((route) => route.isFirst);
+    } on FirebaseAuthException catch (e) {
+      debugPrint(
+        'Google SignUp FirebaseAuthException code=${e.code}, message=${e.message}',
+      );
+      final message = e.message ?? 'Googleでの登録に失敗しました';
+      _showError('[${e.code}] $message');
+    } catch (e, stackTrace) {
+      debugPrint('Google SignUp unexpected error: $e');
+      debugPrint('$stackTrace');
+      _showError('Googleでの登録に失敗しました');
+    } finally {
+      if (mounted) setState(() => _isGoogleLoading = false);
+    }
+  }
+
   void _showError(String message) {
     ScaffoldMessenger.of(context)
         .showSnackBar(SnackBar(content: Text(message)));
   }
 
   Future<void> _pickImage() async {
-    if (_isLoading) return;
+    if (_isLoading || _isGoogleLoading) return;
     try {
       final pickedFile = await _picker.pickImage(
         source: ImageSource.gallery,
@@ -126,6 +157,7 @@ class _SignUpPageState extends State<SignUpPage> {
   }
 
   void _goToCredentialsStep() {
+    if (_isLoading || _isGoogleLoading) return;
     if (!_userInfoFormKey.currentState!.validate()) {
       return;
     }
@@ -133,8 +165,22 @@ class _SignUpPageState extends State<SignUpPage> {
   }
 
   void _goBackToUserInfoStep() {
-    if (_isLoading) return;
+    if (_isLoading || _isGoogleLoading) return;
     setState(() => _currentStep = _SignUpStep.userInfo);
+  }
+
+  Widget _buildGoogleButton() {
+    return OutlinedButton.icon(
+      onPressed: (_isLoading || _isGoogleLoading) ? null : _signUpWithGoogle,
+      icon: const Icon(Icons.login),
+      label: _isGoogleLoading
+          ? const SizedBox(
+              width: 20,
+              height: 20,
+              child: CircularProgressIndicator(strokeWidth: 2),
+            )
+          : const Text('Googleで登録/ログイン'),
+    );
   }
 
   Widget _buildProfilePicker(BuildContext context) {
@@ -275,6 +321,8 @@ class _SignUpPageState extends State<SignUpPage> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
+          _buildGoogleButton(),
+          const SizedBox(height: 12),
           TextFormField(
             controller: _emailController,
             decoration: const InputDecoration(labelText: 'メールアドレス'),
@@ -295,9 +343,7 @@ class _SignUpPageState extends State<SignUpPage> {
                 onPressed: () =>
                     setState(() => _passwordVisible = !_passwordVisible),
                 icon: Icon(
-                  _passwordVisible
-                      ? Icons.visibility_off
-                      : Icons.visibility,
+                  _passwordVisible ? Icons.visibility_off : Icons.visibility,
                 ),
               ),
             ),
@@ -337,7 +383,7 @@ class _SignUpPageState extends State<SignUpPage> {
           ),
           const SizedBox(height: 24),
           FilledButton(
-            onPressed: _isLoading ? null : _submit,
+            onPressed: (_isLoading || _isGoogleLoading) ? null : _submit,
             child: _isLoading
                 ? const SizedBox(
                     width: 20,
@@ -347,7 +393,8 @@ class _SignUpPageState extends State<SignUpPage> {
                 : const Text('登録する'),
           ),
           TextButton(
-            onPressed: _isLoading ? null : _goBackToUserInfoStep,
+            onPressed:
+                (_isLoading || _isGoogleLoading) ? null : _goBackToUserInfoStep,
             child: const Text('戻って修正する'),
           ),
         ],
