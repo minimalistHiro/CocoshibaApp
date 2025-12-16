@@ -40,7 +40,6 @@ class _HomePageState extends State<HomePage> {
   );
   late Future<int> _pointsFuture;
   late final Stream<List<CalendarEvent>> _upcomingEventsStream;
-  late final Stream<bool> _hasUnreadNotificationsStream;
   late final Stream<List<HomePageContent>> _homePageContentsStream;
   late final Stream<List<Campaign>> _activeCampaignsStream;
 
@@ -49,8 +48,6 @@ class _HomePageState extends State<HomePage> {
     super.initState();
     _pointsFuture = _authService.fetchCurrentUserPoints();
     _upcomingEventsStream = _eventService.watchUpcomingEvents(limit: 7);
-    _hasUnreadNotificationsStream = _notificationService
-        .watchHasUnreadNotifications(_authService.currentUser?.uid);
     _homePageContentsStream = _homePageContentService.watchContents();
     _activeCampaignsStream = _campaignService.watchActiveCampaigns();
   }
@@ -93,10 +90,13 @@ class _HomePageState extends State<HomePage> {
             ),
             const SizedBox(width: 16),
             StreamBuilder<bool>(
-              stream: _hasUnreadNotificationsStream,
+              stream: _notificationService.watchHasUnreadNotifications(
+                _authService.currentUser?.uid,
+                includeOwnerNotifications: snapshot.data?['isOwner'] == true,
+              ),
               initialData: false,
-              builder: (context, snapshot) {
-                final hasUnread = snapshot.data ?? false;
+              builder: (context, unreadSnapshot) {
+                final hasUnread = unreadSnapshot.data ?? false;
                 return Stack(
                   clipBehavior: Clip.none,
                   children: [

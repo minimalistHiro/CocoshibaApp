@@ -150,7 +150,10 @@ class NotificationService {
     );
   }
 
-  Stream<bool> watchHasUnreadNotifications(String? userId) {
+  Stream<bool> watchHasUnreadNotifications(
+    String? userId, {
+    bool includeOwnerNotifications = false,
+  }) {
     if (userId == null || userId.isEmpty) {
       return Stream<bool>.value(false);
     }
@@ -162,13 +165,16 @@ class NotificationService {
     StreamSubscription<Set<String>>? readSub;
 
     void emitUnreadState() {
-      final hasUnread =
-          notifications.any((notification) => !readIds.contains(notification.id));
+      final hasUnread = notifications
+          .any((notification) => !readIds.contains(notification.id));
       controller.add(hasUnread);
     }
 
     controller.onListen = () {
-      notificationSub = watchNotifications(userId: userId).listen(
+      notificationSub = watchNotifications(
+        userId: userId,
+        includeOwnerNotifications: includeOwnerNotifications,
+      ).listen(
         (value) {
           notifications = value;
           emitUnreadState();
@@ -207,8 +213,7 @@ class NotificationService {
       final combined = <AppNotification>[
         ...personalNotifications,
         ...globalNotifications,
-      ]
-        ..sort((a, b) {
+      ]..sort((a, b) {
           final aTime = a.createdAt ?? DateTime.fromMillisecondsSinceEpoch(0);
           final bTime = b.createdAt ?? DateTime.fromMillisecondsSinceEpoch(0);
           return bTime.compareTo(aTime);

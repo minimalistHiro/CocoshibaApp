@@ -7,6 +7,7 @@ import '../models/owner_contact_info.dart';
 import '../models/user_chat_models.dart';
 import '../services/owner_settings_service.dart';
 import '../services/user_chat_service.dart';
+import 'feedback_form_page.dart';
 import 'user_chat_thread_page.dart';
 import 'faq_page.dart';
 
@@ -183,8 +184,8 @@ class _SupportHelpPageState extends State<SupportHelpPage> {
                               builder: (context, readSnapshot) {
                                 final lastRead = readSnapshot.data;
                                 return StreamBuilder<Map<String, dynamic>?>(
-                                  stream: chatService
-                                      .threadMetaStream(threadId: userId!),
+                                  stream: chatService.threadMetaStream(
+                                      threadId: userId!),
                                   builder: (context, metaSnapshot) {
                                     final data = metaSnapshot.data;
                                     final lastMessageAt =
@@ -288,11 +289,11 @@ class _SupportHelpPageState extends State<SupportHelpPage> {
                   ),
                   const SizedBox(height: 24),
                   FilledButton.icon(
-                    onPressed: () {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('ダミー: フィードバックフォームを開きます')),
-                      );
-                    },
+                    onPressed: () => Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (_) => const FeedbackFormPage(),
+                      ),
+                    ),
                     icon: const Icon(Icons.feedback_outlined),
                     label: const Text('フィードバックを送信'),
                     style: FilledButton.styleFrom(
