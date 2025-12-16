@@ -170,16 +170,55 @@ class _SignUpPageState extends State<SignUpPage> {
   }
 
   Widget _buildGoogleButton() {
-    return OutlinedButton.icon(
-      onPressed: (_isLoading || _isGoogleLoading) ? null : _signUpWithGoogle,
-      icon: const Icon(Icons.login),
-      label: _isGoogleLoading
-          ? const SizedBox(
-              width: 20,
-              height: 20,
-              child: CircularProgressIndicator(strokeWidth: 2),
-            )
-          : const Text('Googleで登録/ログイン'),
+    final theme = Theme.of(context);
+    final isDisabled = _isLoading || _isGoogleLoading;
+    return SizedBox(
+      height: 52,
+      child: OutlinedButton(
+        onPressed: isDisabled ? null : _signUpWithGoogle,
+        style: OutlinedButton.styleFrom(
+          backgroundColor: Colors.white,
+          foregroundColor: Colors.black87,
+          side: BorderSide(
+            color: theme.colorScheme.outline.withOpacity(0.6),
+            width: 1,
+          ),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(26),
+          ),
+          padding: const EdgeInsets.symmetric(horizontal: 18),
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          mainAxisSize: MainAxisSize.max,
+          children: [
+            if (_isGoogleLoading)
+              const SizedBox(
+                width: 22,
+                height: 22,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  valueColor: AlwaysStoppedAnimation<Color>(Colors.black87),
+                ),
+              )
+            else
+              Image.asset(
+                'assets/images/google_logo.png',
+                width: 24,
+                height: 24,
+              ),
+            const SizedBox(width: 12),
+            Text(
+              _isGoogleLoading ? '処理中...' : 'Googleで続ける',
+              style: const TextStyle(
+                color: Colors.black87,
+                fontSize: 18,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 
@@ -322,7 +361,31 @@ class _SignUpPageState extends State<SignUpPage> {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           _buildGoogleButton(),
-          const SizedBox(height: 12),
+          const SizedBox(height: 16),
+          Row(
+            children: [
+              const Expanded(
+                child: Divider(
+                  thickness: 1,
+                  endIndent: 12,
+                ),
+              ),
+              Text(
+                'または',
+                style: Theme.of(context)
+                    .textTheme
+                    .labelLarge
+                    ?.copyWith(color: Colors.grey[700]),
+              ),
+              const Expanded(
+                child: Divider(
+                  thickness: 1,
+                  indent: 12,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
           TextFormField(
             controller: _emailController,
             decoration: const InputDecoration(labelText: 'メールアドレス'),
