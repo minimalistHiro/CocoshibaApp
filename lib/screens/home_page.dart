@@ -7,6 +7,7 @@ import '../models/calendar_event.dart';
 import '../models/campaign.dart';
 import '../models/home_page_content.dart';
 import '../services/event_service.dart';
+import '../services/event_favorite_service.dart';
 import '../services/firebase_auth_service.dart';
 import '../services/notification_service.dart';
 import '../services/home_page_content_service.dart';
@@ -31,6 +32,7 @@ class HomePage extends StatefulWidget {
 class _HomePageState extends State<HomePage> {
   final FirebaseAuthService _authService = FirebaseAuthService();
   final EventService _eventService = EventService();
+  final EventFavoriteService _favoriteService = EventFavoriteService();
   final NotificationService _notificationService = NotificationService();
   final HomePageContentService _homePageContentService =
       HomePageContentService();
@@ -39,6 +41,8 @@ class _HomePageState extends State<HomePage> {
     'https://docs.google.com/forms/d/e/1FAIpQLSda9VfM-EMborsiY-h11leW1uXgNUPdwv3RFb4_I1GjwFSoOQ/viewform?pli=1',
   );
   late Future<int> _pointsFuture;
+  late final Stream<List<CalendarEvent>> _reservedEventsStream;
+  late final Stream<List<FavoriteEventReference>> _favoriteRefsStream;
   late final Stream<List<CalendarEvent>> _upcomingEventsStream;
   late final Stream<List<HomePageContent>> _homePageContentsStream;
   late final Stream<List<Campaign>> _activeCampaignsStream;
@@ -47,7 +51,16 @@ class _HomePageState extends State<HomePage> {
   void initState() {
     super.initState();
     _pointsFuture = _authService.fetchCurrentUserPoints();
-    _upcomingEventsStream = _eventService.watchUpcomingEvents(limit: 7);
+    final currentUser = _authService.currentUser;
+    _reservedEventsStream = currentUser == null
+        ? Stream<List<CalendarEvent>>.value(const [])
+        : _eventService
+            .watchReservedEvents(currentUser.uid)
+            .map((events) => events.take(7).toList(growable: false));
+    _favoriteRefsStream = currentUser == null
+        ? Stream<List<FavoriteEventReference>>.value(const [])
+        : _favoriteService.watchFavoriteReferences(currentUser.uid);
+    _upcomingEventsStream = _eventService.watchUpcomingEvents(limit: 30);
     _homePageContentsStream = _homePageContentService.watchContents();
     _activeCampaignsStream = _campaignService.watchActiveCampaigns();
   }
@@ -339,6 +352,153 @@ class _HomePageState extends State<HomePage> {
           ),
           const SizedBox(height: 8),
           StreamBuilder<List<CalendarEvent>>(
+            stream: _reservedEventsStream,
+            builder: (context, snapshot) {
+              final reservedEvents =
+                  (snapshot.data ?? const <CalendarEvent>[])
+                      .take(7)
+                      .toList(growable: false);
+
+              if (snapshot.connectionState == ConnectionState.waiting &&
+                  reservedEvents.isEmpty) {
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: const [
+                    _SectionHeader(title: '予約したイベント'),
+                    SizedBox(height: 12),
+                    Center(
+                      child: Padding(
+                        padding: EdgeInsets.symmetric(vertical: 32),
+                        child: CircularProgressIndicator(),
+                      ),
+                    ),
+                  ],
+                );
+              }
+
+              if (reservedEvents.isEmpty) {
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const _SectionHeader(title: '予約したイベント'),
+                    const SizedBox(height: 12),
+                    Container(
+                      padding: const EdgeInsets.all(24),
+                      decoration: BoxDecoration(
+                        color: Colors.grey.shade100,
+                        borderRadius: BorderRadius.circular(24),
+                      ),
+                      child: Text(
+                        '予約したイベントはまだありません',
+                        style: Theme.of(context)
+                            .textTheme
+                            .bodyMedium
+                            ?.copyWith(color: Colors.grey.shade600),
+                      ),
+                    ),
+                  ],
+                );
+              }
+
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const _SectionHeader(title: '予約したイベント'),
+                  const SizedBox(height: 12),
+                  _UpcomingEventsScroller(
+                    events: reservedEvents,
+                    onEventTap: _openEventDetail,
+                  ),
+                ],
+              );
+            },
+          ),
+          const SizedBox(height: 24),
+          StreamBuilder<List<FavoriteEventReference>>(
+            stream: _favoriteRefsStream,
+            builder: (context, favoriteSnapshot) {
+              final favoriteRefs = favoriteSnapshot.data ?? const [];
+              final favoriteExistingIds = favoriteRefs
+                  .map((ref) => ref.existingEventId?.trim())
+                  .where((id) => id != null && id!.isNotEmpty)
+                  .cast<String>()
+                  .toSet();
+
+              return StreamBuilder<List<CalendarEvent>>(
+                stream: _upcomingEventsStream,
+                builder: (context, eventSnapshot) {
+                  final upcomingEvents =
+                      eventSnapshot.data ?? const <CalendarEvent>[];
+                  final favoriteEvents = upcomingEvents
+                      .where(
+                        (event) =>
+                            event.existingEventId != null &&
+                            favoriteExistingIds.contains(event.existingEventId),
+                      )
+                      .take(7)
+                      .toList(growable: false);
+
+                  final isLoading = (favoriteSnapshot.connectionState ==
+                          ConnectionState.waiting ||
+                      eventSnapshot.connectionState == ConnectionState.waiting);
+
+                  if (isLoading && favoriteEvents.isEmpty) {
+                    return Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: const [
+                        _SectionHeader(title: 'お気に入りのイベント'),
+                        SizedBox(height: 12),
+                        Center(
+                          child: Padding(
+                            padding: EdgeInsets.symmetric(vertical: 32),
+                            child: CircularProgressIndicator(),
+                          ),
+                        ),
+                      ],
+                    );
+                  }
+
+                  if (favoriteEvents.isEmpty) {
+                    return Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const _SectionHeader(title: 'お気に入りのイベント'),
+                        const SizedBox(height: 12),
+                        Container(
+                          padding: const EdgeInsets.all(24),
+                          decoration: BoxDecoration(
+                            color: Colors.grey.shade100,
+                            borderRadius: BorderRadius.circular(24),
+                          ),
+                          child: Text(
+                            'お気に入りのイベントはまだありません',
+                            style: Theme.of(context)
+                                .textTheme
+                                .bodyMedium
+                                ?.copyWith(color: Colors.grey.shade600),
+                          ),
+                        ),
+                      ],
+                    );
+                  }
+
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const _SectionHeader(title: 'お気に入りのイベント'),
+                      const SizedBox(height: 12),
+                      _UpcomingEventsScroller(
+                        events: favoriteEvents,
+                        onEventTap: _openEventDetail,
+                      ),
+                    ],
+                  );
+                },
+              );
+            },
+          ),
+          const SizedBox(height: 24),
+          StreamBuilder<List<CalendarEvent>>(
             stream: _upcomingEventsStream,
             builder: (context, snapshot) {
               final upcomingEvents = (snapshot.data ?? const <CalendarEvent>[])
@@ -350,7 +510,7 @@ class _HomePageState extends State<HomePage> {
                 return Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: const [
-                    _UpcomingEventsHeader(),
+                    _SectionHeader(title: '直近のイベント'),
                     SizedBox(height: 12),
                     Center(
                       child: Padding(
@@ -366,7 +526,7 @@ class _HomePageState extends State<HomePage> {
                 return Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const _UpcomingEventsHeader(),
+                    const _SectionHeader(title: '直近のイベント'),
                     const SizedBox(height: 12),
                     Container(
                       padding: const EdgeInsets.all(24),
@@ -389,7 +549,7 @@ class _HomePageState extends State<HomePage> {
               return Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const _UpcomingEventsHeader(),
+                  const _SectionHeader(title: '直近のイベント'),
                   const SizedBox(height: 12),
                   _UpcomingEventsScroller(
                     events: upcomingEvents,
@@ -420,14 +580,16 @@ class _HomePageState extends State<HomePage> {
   }
 }
 
-class _UpcomingEventsHeader extends StatelessWidget {
-  const _UpcomingEventsHeader();
+class _SectionHeader extends StatelessWidget {
+  const _SectionHeader({required this.title});
+
+  final String title;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     return Text(
-      '直近のイベント',
+      title,
       style: theme.textTheme.titleMedium?.copyWith(
         fontWeight: FontWeight.bold,
       ),
@@ -633,7 +795,8 @@ class _UpcomingEventsScroller extends StatelessWidget {
         final cardWidth = availableWidth / 2;
         const imageAspectRatio = 1;
         final imageHeight = cardWidth / imageAspectRatio;
-        final totalHeight = imageHeight + 72;
+        // Extra height to accommodate the additional date line on the card text.
+        final totalHeight = imageHeight + 84;
 
         return SizedBox(
           height: totalHeight,

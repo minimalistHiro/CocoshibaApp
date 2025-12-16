@@ -14,6 +14,22 @@ class EventCard extends StatelessWidget {
   final VoidCallback? onTap;
   final double imageAspectRatio;
 
+  String _formatDate(DateTime dateTime) {
+    final year = dateTime.year;
+    final month = dateTime.month.toString().padLeft(2, '0');
+    final day = dateTime.day.toString().padLeft(2, '0');
+    return '$year/$month/$day';
+  }
+
+  String _formatTimeRange(CalendarEvent event) {
+    String twoDigits(int value) => value.toString().padLeft(2, '0');
+    final start =
+        '${twoDigits(event.startDateTime.hour)}:${twoDigits(event.startDateTime.minute)}';
+    final end =
+        '${twoDigits(event.endDateTime.hour)}:${twoDigits(event.endDateTime.minute)}';
+    return '$start〜$end';
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -68,10 +84,11 @@ class EventCard extends StatelessWidget {
               child: buildImage(),
             ),
             Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+              padding: const EdgeInsets.fromLTRB(12, 8, 12, 4),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
+                  const SizedBox(height: 4),
                   Text(
                     event.name,
                     maxLines: 2,
@@ -81,7 +98,17 @@ class EventCard extends StatelessWidget {
                       height: 1.2,
                     ),
                   ),
-                  const SizedBox(height: 2),
+                  const SizedBox(height: 4),
+                  Text(
+                    '${_formatDate(event.startDateTime)}  ${_formatTimeRange(event)}',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: Colors.grey.shade600,
+                      height: 1.1,
+                    ),
+                  ),
+                  const SizedBox(height: 3),
                   Text(
                     organizerLabel,
                     maxLines: 1,
