@@ -9,6 +9,7 @@ import '../services/event_service.dart';
 import '../services/firebase_auth_service.dart';
 import '../services/notification_service.dart';
 import '../services/home_page_content_service.dart';
+import '../services/new_user_coupon_service.dart';
 import '../widgets/point_card.dart';
 import '../widgets/event_card.dart';
 import 'menu_list_page.dart';
@@ -18,6 +19,7 @@ import 'point_history_page.dart';
 import 'home_page_content_detail_page.dart';
 import 'event_detail_page.dart';
 import 'events_page.dart';
+import 'new_user_coupon_page.dart';
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
@@ -32,6 +34,7 @@ class _HomePageState extends State<HomePage> {
   final NotificationService _notificationService = NotificationService();
   final HomePageContentService _homePageContentService =
       HomePageContentService();
+  final NewUserCouponService _newUserCouponService = NewUserCouponService();
   static final Uri _bookOrderFormUri = Uri.parse(
     'https://docs.google.com/forms/d/e/1FAIpQLSda9VfM-EMborsiY-h11leW1uXgNUPdwv3RFb4_I1GjwFSoOQ/viewform?pli=1',
   );
@@ -307,6 +310,14 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
+  void _openNewUserCouponPage() {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => const NewUserCouponPage(),
+      ),
+    );
+  }
+
   void _openEventDetail(CalendarEvent event) {
     Navigator.of(context).push(
       MaterialPageRoute(
@@ -408,6 +419,55 @@ class _HomePageState extends State<HomePage> {
                         ],
                       ),
                     ),
+                  ),
+                  StreamBuilder<bool>(
+                    stream: _authService.currentUser == null
+                        ? const Stream<bool>.empty()
+                        : _newUserCouponService
+                            .watchIsUsed(_authService.currentUser!.uid),
+                    builder: (context, snapshot) {
+                      final canShow = snapshot.hasData && snapshot.data == false;
+                      if (!canShow) return const SizedBox.shrink();
+                      return Column(
+                        children: [
+                          const SizedBox(height: 16),
+                          Material(
+                            color: Colors.transparent,
+                            elevation: 2,
+                            shadowColor: Colors.black.withOpacity(0.1),
+                            borderRadius: BorderRadius.circular(24),
+                            clipBehavior: Clip.antiAlias,
+                            child: InkWell(
+                              onTap: _openNewUserCouponPage,
+                              child: SizedBox(
+                                height: 140,
+                                child: Image.asset(
+                                  'assets/images/new_user_coupon.png',
+                                  fit: BoxFit.cover,
+                                  width: double.infinity,
+                                  errorBuilder: (context, error, stackTrace) {
+                                    return Container(
+                                      color: Colors.grey.shade200,
+                                      alignment: Alignment.center,
+                                      padding: const EdgeInsets.all(16),
+                                      child: Text(
+                                        '画像を読み込めませんでした',
+                                        style: Theme.of(context)
+                                            .textTheme
+                                            .bodyMedium
+                                            ?.copyWith(
+                                              color: Colors.grey.shade700,
+                                            ),
+                                      ),
+                                    );
+                                  },
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
+                      );
+                    },
                   ),
                   const SizedBox(height: 32),
                   StreamBuilder<List<CalendarEvent>>(

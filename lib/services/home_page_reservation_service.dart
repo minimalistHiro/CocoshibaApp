@@ -22,9 +22,6 @@ class HomePageReservationService {
           String contentId) =>
       _homePagesRef.doc(contentId).collection('reservations');
 
-  CollectionReference<Map<String, dynamic>> get _ownerNotificationsRef =>
-      _firestore.collection('owner_notifications');
-
   Future<void> createReservation({
     required String contentId,
     required String contentTitle,
@@ -77,32 +74,6 @@ class HomePageReservationService {
       transaction.set(contentReservationRef, contentReservationPayload);
 
       final reserverName = (userData?['name'] as String?)?.trim();
-      final reserverLabel = reserverName != null && reserverName.isNotEmpty
-          ? reserverName
-          : userId;
-      final ownerNotificationBody = '''
-$reserverLabel が $contentTitle の予約をしました
-受け取り日: $pickupLabel
-予約完了日: $completionLabel
-個数: $quantity
-''';
-      final ownerNotificationRef = _ownerNotificationsRef.doc();
-      transaction.set(ownerNotificationRef, {
-        'title': '予約通知',
-        'userId': userId,
-        'userName': reserverName,
-        'userEmail': (userData?['email'] as String?)?.trim(),
-        'contentId': contentId,
-        'contentTitle': contentTitle,
-        'pickupDate': Timestamp.fromDate(pickupDate),
-        'pickupLabel': pickupLabel,
-        'quantity': quantity,
-        'completionDate': Timestamp.fromDate(completionDate),
-        'completionLabel': completionLabel,
-        'body': ownerNotificationBody,
-        'category': '予約',
-        'createdAt': FieldValue.serverTimestamp(),
-      });
 
       transaction.update(contentDocRef, {
         'reservationCount': FieldValue.increment(1),
