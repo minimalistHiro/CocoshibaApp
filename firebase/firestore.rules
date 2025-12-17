@@ -1,6 +1,24 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function currentUserProfile() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+    }
+
+    function isOwner() {
+      return signedIn() && currentUserProfile().isOwner == true;
+    }
+
+    function isPrivileged() {
+      return signedIn() &&
+          (currentUserProfile().isOwner == true ||
+              currentUserProfile().isSubOwner == true);
+    }
+
     // Each user can read/write their own profile
     match /users/{userId} {
       allow read, write: if request.auth != null && request.auth.uid == userId;
@@ -9,6 +27,25 @@ service cloud.firestore {
       match /{subcollection=**}/{docId} {
         allow read, write: if request.auth != null && request.auth.uid == userId;
       }
+    }
+
+    // Menus
+    match /menus/{menuId} {
+      allow read: if signedIn();
+      allow write: if isPrivileged();
+    }
+
+    // Notifications for users
+    match /notifications/{notificationId} {
+      allow read: if signedIn();
+      allow create, update, delete: if isOwner();
+    }
+
+    // Notifications for owners (feedback, reservations, etc.)
+    match /owner_notifications/{notificationId} {
+      allow read: if isPrivileged();
+      allow create: if signedIn();
+      allow update, delete: if isPrivileged();
     }
 
     // Event listings

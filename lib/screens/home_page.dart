@@ -4,14 +4,11 @@ import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../models/calendar_event.dart';
-import '../models/campaign.dart';
 import '../models/home_page_content.dart';
 import '../services/event_service.dart';
-import '../services/event_favorite_service.dart';
 import '../services/firebase_auth_service.dart';
 import '../services/notification_service.dart';
 import '../services/home_page_content_service.dart';
-import '../services/campaign_service.dart';
 import '../widgets/point_card.dart';
 import '../widgets/event_card.dart';
 import 'menu_list_page.dart';
@@ -32,21 +29,16 @@ class HomePage extends StatefulWidget {
 class _HomePageState extends State<HomePage> {
   final FirebaseAuthService _authService = FirebaseAuthService();
   final EventService _eventService = EventService();
-  final EventFavoriteService _favoriteService = EventFavoriteService();
   final NotificationService _notificationService = NotificationService();
   final HomePageContentService _homePageContentService =
       HomePageContentService();
-  final CampaignService _campaignService = CampaignService();
-  List<Campaign> _cachedActiveCampaigns = const [];
   static final Uri _bookOrderFormUri = Uri.parse(
     'https://docs.google.com/forms/d/e/1FAIpQLSda9VfM-EMborsiY-h11leW1uXgNUPdwv3RFb4_I1GjwFSoOQ/viewform?pli=1',
   );
   late Future<int> _pointsFuture;
   late final Stream<List<CalendarEvent>> _reservedEventsStream;
-  late final Stream<List<FavoriteEventReference>> _favoriteRefsStream;
   late final Stream<List<CalendarEvent>> _upcomingEventsStream;
   late final Stream<List<HomePageContent>> _homePageContentsStream;
-  late final Stream<List<Campaign>> _activeCampaignsStream;
 
   Stream<T> _singleValueStream<T>(T value) {
     return Stream<T>.multi((controller) {
@@ -125,12 +117,6 @@ class _HomePageState extends State<HomePage> {
     _reservedEventsStream = reservedStream
         .distinct((a, b) => _sameBySignature(a, b, _eventSignature));
 
-    final favoriteRefsStream = currentUser == null
-        ? _singleValueStream<List<FavoriteEventReference>>(const [])
-        : _favoriteService.watchFavoriteReferences(currentUser.uid);
-    _favoriteRefsStream = favoriteRefsStream
-        .distinct((a, b) => _sameBySignature(a, b, _favoriteSignature));
-
     final upcomingEventsSource = _eventService
         .watchUpcomingEvents(limit: 30)
         .distinct((a, b) => _sameBySignature(a, b, _eventSignature));
@@ -139,10 +125,6 @@ class _HomePageState extends State<HomePage> {
     _homePageContentsStream = _homePageContentService
         .watchContents()
         .distinct((a, b) => _sameBySignature(a, b, _homeContentSignature));
-
-    _activeCampaignsStream = _campaignService
-        .watchActiveCampaigns()
-        .distinct((a, b) => _sameBySignature(a, b, _campaignSignature));
   }
 
   bool _sameBySignature<T>(
@@ -162,32 +144,9 @@ class _HomePageState extends State<HomePage> {
     return '${event.id}/${event.startDateTime.millisecondsSinceEpoch}/${event.endDateTime.millisecondsSinceEpoch}/${event.imageUrls.length}';
   }
 
-  String _favoriteSignature(FavoriteEventReference ref) {
-    return '${ref.targetId}/${ref.eventId ?? ''}/${ref.existingEventId ?? ''}';
-  }
-
   String _homeContentSignature(HomePageContent content) {
     final updated = content.updatedAt?.millisecondsSinceEpoch ?? 0;
     return '${content.id}/${content.displayOrder}/$updated/${content.imageUrls.length}';
-  }
-
-  String _campaignSignature(Campaign campaign) {
-    final end = campaign.displayEnd?.millisecondsSinceEpoch ?? 0;
-    final updated = campaign.updatedAt?.millisecondsSinceEpoch ?? 0;
-    return '${campaign.id}/$end/$updated';
-  }
-
-  Campaign _selectPriorityCampaign(List<Campaign> campaigns) {
-    if (campaigns.length == 1) return campaigns.first;
-    return campaigns.reduce((a, b) {
-      final aEnd = a.displayEnd ?? DateTime.fromMillisecondsSinceEpoch(0);
-      final bEnd = b.displayEnd ?? DateTime.fromMillisecondsSinceEpoch(0);
-      if (aEnd.isBefore(bEnd)) return a;
-      if (bEnd.isBefore(aEnd)) return b;
-      final aCreated = a.createdAt ?? DateTime.fromMillisecondsSinceEpoch(0);
-      final bCreated = b.createdAt ?? DateTime.fromMillisecondsSinceEpoch(0);
-      return aCreated.isBefore(bCreated) ? a : b;
-    });
   }
 
   void _showNotification(BuildContext context) {
@@ -451,75 +410,6 @@ class _HomePageState extends State<HomePage> {
                     ),
                   ),
                   const SizedBox(height: 32),
-                  StreamBuilder<List<Campaign>>(
-                    stream: _activeCampaignsStream,
-                    initialData: _cachedActiveCampaigns,
-                    builder: (context, snapshot) {
-                      final campaigns = snapshot.data ?? const <Campaign>[];
-                      if (campaigns.isNotEmpty) {
-                        _cachedActiveCampaigns = campaigns;
-                      }
-                      final isLoading =
-                          snapshot.connectionState == ConnectionState.waiting;
-
-                      if (isLoading && campaigns.isEmpty) {
-                        if (_cachedActiveCampaigns.isNotEmpty) {
-                          return const SizedBox.shrink();
-                        }
-                        return const Center(
-                          child: Padding(
-                            padding: EdgeInsets.symmetric(vertical: 24),
-                            child: CircularProgressIndicator(),
-                          ),
-                        );
-                      }
-
-                      if (campaigns.isEmpty) {
-                        return const SizedBox.shrink();
-                      }
-
-                      final priorityCampaign =
-                          _selectPriorityCampaign(campaigns);
-                      final screenWidth = MediaQuery.sizeOf(context).width;
-                      final dpr = MediaQuery.of(context).devicePixelRatio;
-                      final campaignWidth =
-                          (screenWidth - 48).clamp(0.0, double.infinity);
-                      final campaignHeight = campaignWidth / 2;
-                      final campaignCacheWidth = (campaignWidth * dpr).round();
-                      final campaignCacheHeight =
-                          (campaignHeight * dpr).round();
-                      return Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            'キャンペーン',
-                            style: Theme.of(context)
-                                .textTheme
-                                .titleMedium
-                                ?.copyWith(fontWeight: FontWeight.bold),
-                          ),
-                          const SizedBox(height: 12),
-                          AspectRatio(
-                            aspectRatio: 2 / 1,
-                            child: ClipRRect(
-                              borderRadius: BorderRadius.circular(16),
-                              child: _CampaignSlide(
-                                campaign: priorityCampaign,
-                                imageCacheWidth: campaignCacheWidth > 0
-                                    ? campaignCacheWidth
-                                    : null,
-                                imageCacheHeight: campaignCacheHeight > 0
-                                    ? campaignCacheHeight
-                                    : null,
-                              ),
-                            ),
-                          ),
-                          const SizedBox(height: 24),
-                        ],
-                      );
-                    },
-                  ),
-                  const SizedBox(height: 8),
                   StreamBuilder<List<CalendarEvent>>(
                     stream: _reservedEventsStream,
                     builder: (context, snapshot) {
@@ -579,92 +469,6 @@ class _HomePageState extends State<HomePage> {
                             onEventTap: _openEventDetail,
                           ),
                         ],
-                      );
-                    },
-                  ),
-                  const SizedBox(height: 24),
-                  StreamBuilder<List<FavoriteEventReference>>(
-                    stream: _favoriteRefsStream,
-                    builder: (context, favoriteSnapshot) {
-                      final favoriteRefs = favoriteSnapshot.data ?? const [];
-                      final favoriteExistingIds = favoriteRefs
-                          .map((ref) => ref.existingEventId?.trim())
-                          .where((id) => id != null && id!.isNotEmpty)
-                          .cast<String>()
-                          .toSet();
-
-                      return StreamBuilder<List<CalendarEvent>>(
-                        stream: _upcomingEventsStream,
-                        builder: (context, eventSnapshot) {
-                          final upcomingEvents =
-                              eventSnapshot.data ?? const <CalendarEvent>[];
-                          final favoriteEvents = upcomingEvents
-                              .where(
-                                (event) =>
-                                    event.existingEventId != null &&
-                                    favoriteExistingIds
-                                        .contains(event.existingEventId),
-                              )
-                              .take(7)
-                              .toList(growable: false);
-
-                          final isLoading = favoriteSnapshot.connectionState ==
-                                  ConnectionState.waiting ||
-                              eventSnapshot.connectionState ==
-                                  ConnectionState.waiting;
-
-                          if (isLoading && favoriteEvents.isEmpty) {
-                            return Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: const [
-                                _SectionHeader(title: 'お気に入りのイベント'),
-                                SizedBox(height: 12),
-                                Center(
-                                  child: Padding(
-                                    padding: EdgeInsets.symmetric(vertical: 32),
-                                    child: CircularProgressIndicator(),
-                                  ),
-                                ),
-                              ],
-                            );
-                          }
-
-                          if (favoriteEvents.isEmpty) {
-                            return Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                const _SectionHeader(title: 'お気に入りのイベント'),
-                                const SizedBox(height: 12),
-                                Container(
-                                  padding: const EdgeInsets.all(24),
-                                  decoration: BoxDecoration(
-                                    color: Colors.grey.shade100,
-                                    borderRadius: BorderRadius.circular(24),
-                                  ),
-                                  child: Text(
-                                    'お気に入りのイベントはまだありません',
-                                    style: Theme.of(context)
-                                        .textTheme
-                                        .bodyMedium
-                                        ?.copyWith(color: Colors.grey.shade600),
-                                  ),
-                                ),
-                              ],
-                            );
-                          }
-
-                          return Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              const _SectionHeader(title: 'お気に入りのイベント'),
-                              const SizedBox(height: 12),
-                              _UpcomingEventsScroller(
-                                events: favoriteEvents,
-                                onEventTap: _openEventDetail,
-                              ),
-                            ],
-                          );
-                        },
                       );
                     },
                   ),
@@ -852,99 +656,6 @@ class _SectionHeader extends StatelessWidget {
       style: theme.textTheme.titleMedium?.copyWith(
         fontWeight: FontWeight.bold,
       ),
-    );
-  }
-}
-
-class _CampaignSlide extends StatelessWidget {
-  const _CampaignSlide({
-    required this.campaign,
-    this.imageCacheWidth,
-    this.imageCacheHeight,
-  });
-
-  final Campaign campaign;
-  final int? imageCacheWidth;
-  final int? imageCacheHeight;
-  static const bool _disableNetworkImages =
-      bool.fromEnvironment('DISABLE_NETWORK_IMAGES');
-
-  @override
-  Widget build(BuildContext context) {
-    final hasImage = campaign.imageUrl != null && campaign.imageUrl!.isNotEmpty;
-    return Stack(
-      fit: StackFit.expand,
-      children: [
-        if (_disableNetworkImages)
-          Container(
-            color: Colors.grey.shade200,
-            child: const Icon(Icons.image_outlined, size: 48),
-          )
-        else
-          hasImage
-              ? Image.network(
-                  campaign.imageUrl!,
-                  fit: BoxFit.cover,
-                  cacheWidth: imageCacheWidth,
-                  cacheHeight: imageCacheHeight,
-                  filterQuality: FilterQuality.none,
-                  isAntiAlias: false,
-                  gaplessPlayback: true,
-                  errorBuilder: (_, __, ___) => Container(
-                    color: Colors.grey.shade200,
-                    child: const Icon(Icons.broken_image_outlined, size: 48),
-                  ),
-                )
-              : Container(
-                  color: Colors.grey.shade200,
-                  child: Center(
-                    child: Icon(
-                      Icons.local_offer_outlined,
-                      size: 48,
-                      color: Colors.grey.shade600,
-                    ),
-                  ),
-                ),
-        Container(
-          decoration: BoxDecoration(
-            gradient: LinearGradient(
-              begin: Alignment.bottomCenter,
-              end: Alignment.topCenter,
-              colors: [
-                Colors.black.withOpacity(0.55),
-                Colors.black.withOpacity(0.1),
-              ],
-            ),
-          ),
-        ),
-        Padding(
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisAlignment: MainAxisAlignment.end,
-            children: [
-              Text(
-                campaign.title.isEmpty ? 'キャンペーン' : campaign.title,
-                style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                      color: Colors.white,
-                      fontWeight: FontWeight.bold,
-                    ),
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-              ),
-              const SizedBox(height: 8),
-              Text(
-                campaign.body,
-                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                      color: Colors.white,
-                    ),
-                maxLines: 3,
-                overflow: TextOverflow.ellipsis,
-              ),
-            ],
-          ),
-        ),
-      ],
     );
   }
 }
