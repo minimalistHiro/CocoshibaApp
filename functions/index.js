@@ -28,6 +28,21 @@ const mailTransport =
       })
     : null;
 
+function formatDateYmd(value) {
+  if (!value) return '';
+  const date =
+    typeof value.toDate === 'function'
+      ? value.toDate()
+      : value instanceof Date
+        ? value
+        : new Date(value);
+  if (Number.isNaN(date.getTime())) return '';
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}/${month}/${day}`;
+}
+
 exports.onNotificationCreated = functions
   .region('us-central1')
   .firestore.document('notifications/{notificationId}')
@@ -150,6 +165,92 @@ exports.onOwnerNotificationCreated = functions
     return null;
   });
 
+exports.onFeedbackCreated = functions
+  .region('us-central1')
+  .firestore.document('feedbacks/{feedbackId}')
+  .onCreate(async (snapshot, context) => {
+    const data = snapshot.data();
+    if (!data) return null;
+
+    const feedbackId = context.params.feedbackId;
+    const category = (data.category || '').toString().trim();
+    const title = (data.title || '').toString().trim();
+    const detail = (data.detail || '').toString().trim();
+    const contactEmail = (data.contactEmail || '').toString().trim();
+    const includeDeviceInfo = data.includeDeviceInfo === true;
+    const userId = (data.userId || '').toString().trim() || null;
+    const userName = (data.userName || '').toString().trim() || null;
+    const userEmail = (data.userEmail || '').toString().trim() || null;
+
+    const reporterLabel = userName || userEmail || '不明なユーザー';
+    const detailSnippet = detail.length > 120 ? `${detail.slice(0, 120)}…` : detail;
+    const body = `
+${reporterLabel} からフィードバックが届きました
+カテゴリ: ${category || '未設定'}
+概要: ${title || '未設定'}
+内容: ${detailSnippet || '未設定'}
+`.trim();
+
+    await db.collection('owner_notifications').add({
+      title: 'フィードバック受信',
+      body,
+      category: 'フィードバック',
+      feedbackId,
+      contactEmail: contactEmail || null,
+      includeDeviceInfo,
+      detail: detail || null,
+      userId,
+      userName,
+      userEmail,
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+    });
+
+    return null;
+  });
+
+exports.onHomePageReservationCreated = functions
+  .region('us-central1')
+  .firestore
+  .document('home_pages/{contentId}/reservations/{reservationId}')
+  .onCreate(async (snapshot, context) => {
+    const data = snapshot.data();
+    if (!data) return null;
+
+    const { contentId, reservationId } = context.params;
+    const userId = (data.userId || '').toString().trim() || null;
+    const userName = (data.userName || '').toString().trim() || null;
+    const userEmail = (data.userEmail || '').toString().trim() || null;
+    const contentTitle = (data.contentTitle || '').toString().trim();
+    const quantity = typeof data.quantity === 'number' ? data.quantity : null;
+    const pickupDateLabel = formatDateYmd(data.pickupDate);
+    const createdAtLabel = formatDateYmd(data.createdAt);
+
+    const reserverLabel = userName || userEmail || userId || '不明なユーザー';
+    const body = `
+${reserverLabel} が ${contentTitle || '未設定'} の予約をしました
+受け取り日: ${pickupDateLabel || '未設定'}
+予約完了日: ${createdAtLabel || '未設定'}
+個数: ${quantity ?? '未設定'}
+`.trim();
+
+    await db.collection('owner_notifications').add({
+      title: '予約通知',
+      body,
+      category: '予約',
+      contentId,
+      contentTitle: contentTitle || null,
+      reservationId,
+      userId,
+      userName,
+      userEmail,
+      pickupDate: data.pickupDate || null,
+      quantity,
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+    });
+
+    return null;
+  });
+
 async function collectAllUserTokens() {
   const usersSnapshot = await db.collection('users').get();
   if (usersSnapshot.empty) {
@@ -236,21 +337,49 @@ exports.requestEmailVerification = functions
     }
 
     const email = (data?.email || '').toString().trim();
+    const forceResend = Boolean(data?.forceResend);
+    const authEmail = (context.auth.token?.email || '').toString().trim();
+
     if (!email) {
       throw new functions.https.HttpsError(
         'invalid-argument',
         'メールアドレスが指定されていません'
       );
     }
+    if (authEmail && email.toLowerCase() !== authEmail.toLowerCase()) {
+      throw new functions.https.HttpsError(
+        'invalid-argument',
+        'ログイン中のメールアドレスと一致しません'
+      );
+    }
 
     const uid = context.auth.uid;
+    const docRef = db.collection(EMAIL_VERIFICATION_COLLECTION).doc(uid);
+    const snapshot = await docRef.get();
+
+    const existing = snapshot.exists ? snapshot.data() || {} : {};
+    const existingStatus = (existing.status || '').toString();
+    const existingExpiresAt = existing.expiresAt;
+    const existingExpiresMs =
+      existingExpiresAt?.toMillis && typeof existingExpiresAt.toMillis === 'function'
+        ? existingExpiresAt.toMillis()
+        : null;
+
+    if (existingStatus === 'verified') {
+      return { verified: true };
+    }
+
+    if (!forceResend && typeof existingExpiresMs === 'number' && existingExpiresMs > Date.now()) {
+      return { expiresAt: existingExpiresMs, reused: true };
+    }
+
     const code = generateSixDigitCode();
     const codeHash = hashCode(code);
     const expiresAt = admin.firestore.Timestamp.fromDate(
       new Date(Date.now() + EMAIL_CODE_EXPIRATION_MINUTES * 60 * 1000)
     );
 
-    await db.collection(EMAIL_VERIFICATION_COLLECTION).doc(uid).set(
+    await docRef.set(
       {
         email,
         codeHash,
@@ -266,7 +395,7 @@ exports.requestEmailVerification = functions
     await sendVerificationEmail(email, code);
     functions.logger.info('Verification email sent', { uid, email });
 
-    return { expiresAt: expiresAt.toMillis() };
+    return { expiresAt: expiresAt.toMillis(), reused: false };
   });
 
 exports.verifyEmailCode = functions

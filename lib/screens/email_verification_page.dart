@@ -21,13 +21,11 @@ class _EmailVerificationPageState extends State<EmailVerificationPage> {
 
   bool _isSubmitting = false;
   bool _isSending = false;
+  bool _hasSentCode = false;
 
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      _sendCode(initial: true);
-    });
   }
 
   @override
@@ -36,15 +34,17 @@ class _EmailVerificationPageState extends State<EmailVerificationPage> {
     super.dispose();
   }
 
-  Future<void> _sendCode({bool initial = false}) async {
+  Future<void> _sendCode({bool forceResend = false}) async {
     if (_isSending) return;
     setState(() => _isSending = true);
     try {
-      await _authService.sendEmailVerificationCode(email: widget.email);
-      if (!mounted) return;
-      _showMessage(
-        initial ? '認証コードを送信しました' : '認証コードを再送しました',
+      await _authService.sendEmailVerificationCode(
+        email: widget.email,
+        forceResend: forceResend,
       );
+      if (!mounted) return;
+      setState(() => _hasSentCode = true);
+      _showMessage(forceResend ? '認証コードを再送しました' : '認証コードを送信しました');
     } on FirebaseFunctionsException catch (e) {
       debugPrint(
         'requestEmailVerification failed: code=${e.code}, message=${e.message}, details=${e.details}',
@@ -127,7 +127,9 @@ class _EmailVerificationPageState extends State<EmailVerificationPage> {
             ),
             const SizedBox(height: 12),
             Text(
-              '入力したメールアドレス宛に6桁の認証コードを送信しました。届いたコードを入力してください。',
+              _hasSentCode
+                  ? '送信した6桁の認証コードを入力してください。'
+                  : '6桁の認証コードを送信して、届いたコードを入力してください。',
               style: theme.textTheme.bodyMedium,
             ),
             const SizedBox(height: 24),
@@ -142,6 +144,19 @@ class _EmailVerificationPageState extends State<EmailVerificationPage> {
               ),
             ),
             const SizedBox(height: 12),
+            OutlinedButton(
+              onPressed: _isSending
+                  ? null
+                  : () => _sendCode(forceResend: _hasSentCode),
+              child: _isSending
+                  ? const SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : Text(_hasSentCode ? 'コードを再送する' : 'コードを送信する'),
+            ),
+            const SizedBox(height: 12),
             FilledButton(
               onPressed: _isSubmitting ? null : _verify,
               child: _isSubmitting
@@ -151,17 +166,6 @@ class _EmailVerificationPageState extends State<EmailVerificationPage> {
                       child: CircularProgressIndicator(strokeWidth: 2),
                     )
                   : const Text('認証する'),
-            ),
-            const SizedBox(height: 12),
-            OutlinedButton(
-              onPressed: _isSending ? null : _sendCode,
-              child: _isSending
-                  ? const SizedBox(
-                      width: 20,
-                      height: 20,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
-                  : const Text('コードを再送する'),
             ),
             const Spacer(),
             TextButton(

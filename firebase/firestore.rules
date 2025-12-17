@@ -32,7 +32,7 @@ service cloud.firestore {
     // Menus
     match /menus/{menuId} {
       allow read: if signedIn();
-      allow write: if isPrivileged();
+      allow create, update, delete: if isOwner();
     }
 
     // Notifications for users
@@ -44,13 +44,13 @@ service cloud.firestore {
     // Notifications for owners (feedback, reservations, etc.)
     match /owner_notifications/{notificationId} {
       allow read: if isPrivileged();
-      allow create: if signedIn();
-      allow update, delete: if isPrivileged();
+      allow create, update, delete: if isOwner();
     }
 
     // Event listings
     match /events/{eventId} {
       allow read: if request.auth != null;
+      allow create, update, delete: if isOwner();
 
       // Reservations under an event
       match /event_reservations/{uid} {
@@ -71,16 +71,34 @@ service cloud.firestore {
     // Existing event master (used by favorites tab)
     match /existing_events/{eventId} {
       allow read: if request.auth != null;
+      allow create, update, delete: if isOwner();
 
       match /favorite_users/{uid} {
         allow read, write: if request.auth != null && request.auth.uid == uid;
       }
     }
 
+    // Owner settings (point rate, contact info)
+    match /owner_settings/{docId} {
+      allow read: if signedIn();
+      allow create, update, delete: if isOwner();
+    }
+
+    // Feedbacks submitted by users (owners can manage in console / admin UI)
+    match /feedbacks/{feedbackId} {
+      allow create: if signedIn();
+      allow read, update, delete: if isOwner();
+    }
+
     // Home page contents
     match /home_pages/{docId} {
       allow read: if request.auth != null;
       // write should be restricted to admins/owners if needed
+
+      match /reservations/{reservationId} {
+        allow create: if signedIn() && request.resource.data.userId == request.auth.uid;
+        allow read, update, delete: if isOwner();
+      }
     }
 
     // Campaigns

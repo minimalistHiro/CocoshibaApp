@@ -342,7 +342,10 @@ class FirebaseAuthService {
     }
   }
 
-  Future<void> sendEmailVerificationCode({String? email}) async {
+  Future<void> sendEmailVerificationCode({
+    String? email,
+    bool forceResend = false,
+  }) async {
     final user = _auth.currentUser;
     if (user == null) {
       throw FirebaseAuthException(
@@ -360,7 +363,7 @@ class FirebaseAuthService {
     }
 
     final callable = _functions.httpsCallable('requestEmailVerification');
-    await callable.call({'email': targetEmail});
+    await callable.call({'email': targetEmail, 'forceResend': forceResend});
   }
 
   Future<void> verifyEmailCode(String code) async {
