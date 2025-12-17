@@ -788,7 +788,7 @@ class _UpcomingEventsScroller extends StatelessWidget {
       builder: (context, constraints) {
         final screenWidth = constraints.maxWidth;
         const horizontalPadding = 24 * 2;
-        const crossAxisSpacing = 16;
+        const double crossAxisSpacing = 16;
         final availableWidth =
             (screenWidth - horizontalPadding - crossAxisSpacing)
                 .clamp(0.0, double.infinity);
@@ -800,22 +800,25 @@ class _UpcomingEventsScroller extends StatelessWidget {
 
         return SizedBox(
           height: totalHeight,
-          child: ListView.separated(
+          child: SingleChildScrollView(
             scrollDirection: Axis.horizontal,
-            physics: const BouncingScrollPhysics(),
+            primary: false,
+            physics: const ClampingScrollPhysics(),
             padding: EdgeInsets.zero,
-            itemCount: events.length,
-            separatorBuilder: (_, __) => const SizedBox(width: 16),
-            itemBuilder: (context, index) {
-              final event = events[index];
-              return SizedBox(
-                width: cardWidth,
-                child: EventCard(
-                  event: event,
-                  onTap: () => onEventTap(event),
-                ),
-              );
-            },
+            child: Row(
+              children: [
+                for (var i = 0; i < events.length; i++) ...[
+                  if (i != 0) const SizedBox(width: crossAxisSpacing),
+                  SizedBox(
+                    width: cardWidth,
+                    child: EventCard(
+                      event: events[i],
+                      onTap: () => onEventTap(events[i]),
+                    ),
+                  ),
+                ],
+              ],
+            ),
           ),
         );
       },

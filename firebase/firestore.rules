@@ -1,9 +1,55 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    // Allow each authenticated user to read/write only their own user profile.
+    // Each user can read/write their own profile
     match /users/{userId} {
       allow read, write: if request.auth != null && request.auth.uid == userId;
+
+      // All subcollections under the user (e.g., interested_events, favorite_events, event_reservations)
+      match /{subcollection=**}/{docId} {
+        allow read, write: if request.auth != null && request.auth.uid == userId;
+      }
+    }
+
+    // Event listings
+    match /events/{eventId} {
+      allow read: if request.auth != null;
+
+      // Reservations under an event
+      match /event_reservations/{uid} {
+        allow read, write: if request.auth != null && request.auth.uid == uid;
+      }
+
+      // Interested users under an event
+      match /interested_users/{uid} {
+        allow read, write: if request.auth != null && request.auth.uid == uid;
+      }
+
+      // Favorite users under an event
+      match /favorite_users/{uid} {
+        allow read, write: if request.auth != null && request.auth.uid == uid;
+      }
+    }
+
+    // Existing event master (used by favorites tab)
+    match /existing_events/{eventId} {
+      allow read: if request.auth != null;
+
+      match /favorite_users/{uid} {
+        allow read, write: if request.auth != null && request.auth.uid == uid;
+      }
+    }
+
+    // Home page contents
+    match /home_pages/{docId} {
+      allow read: if request.auth != null;
+      // write should be restricted to admins/owners if needed
+    }
+
+    // Campaigns
+    match /campaigns/{docId} {
+      allow read: if request.auth != null;
+      // write should be restricted to admins/owners if needed
     }
   }
 }
