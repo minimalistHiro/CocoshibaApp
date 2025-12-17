@@ -37,6 +37,7 @@ class _HomePageState extends State<HomePage> {
   final HomePageContentService _homePageContentService =
       HomePageContentService();
   final CampaignService _campaignService = CampaignService();
+  List<Campaign> _cachedActiveCampaigns = const [];
   static final Uri _bookOrderFormUri = Uri.parse(
     'https://docs.google.com/forms/d/e/1FAIpQLSda9VfM-EMborsiY-h11leW1uXgNUPdwv3RFb4_I1GjwFSoOQ/viewform?pli=1',
   );
@@ -47,22 +48,146 @@ class _HomePageState extends State<HomePage> {
   late final Stream<List<HomePageContent>> _homePageContentsStream;
   late final Stream<List<Campaign>> _activeCampaignsStream;
 
+  Stream<T> _singleValueStream<T>(T value) {
+    return Stream<T>.multi((controller) {
+      controller.add(value);
+      controller.close();
+    });
+  }
+
+  Stream<T> _shareReplayLatest<T>(Stream<T> source) {
+    final listeners = <MultiStreamController<T>>{};
+    StreamSubscription<T>? subscription;
+    T? latestValue;
+    var hasLatestValue = false;
+    var isDone = false;
+
+    void ensureSubscribed() {
+      if (subscription != null || isDone) return;
+      subscription = source.listen(
+        (value) {
+          latestValue = value;
+          hasLatestValue = true;
+          for (final listener in listeners.toList(growable: false)) {
+            listener.add(value);
+          }
+        },
+        onError: (Object error, StackTrace stackTrace) {
+          for (final listener in listeners.toList(growable: false)) {
+            listener.addError(error, stackTrace);
+          }
+        },
+        onDone: () {
+          isDone = true;
+          subscription = null;
+          for (final listener in listeners.toList(growable: false)) {
+            listener.close();
+          }
+          listeners.clear();
+        },
+      );
+    }
+
+    Future<void> maybeUnsubscribe() async {
+      if (listeners.isNotEmpty) return;
+      final current = subscription;
+      subscription = null;
+      await current?.cancel();
+    }
+
+    return Stream<T>.multi((controller) {
+      if (hasLatestValue) {
+        controller.add(latestValue as T);
+      }
+      if (isDone) {
+        controller.close();
+        return;
+      }
+      listeners.add(controller);
+      ensureSubscribed();
+      controller.onCancel = () async {
+        listeners.remove(controller);
+        await maybeUnsubscribe();
+      };
+    });
+  }
+
   @override
   void initState() {
     super.initState();
     _pointsFuture = _authService.fetchCurrentUserPoints();
     final currentUser = _authService.currentUser;
-    _reservedEventsStream = currentUser == null
-        ? Stream<List<CalendarEvent>>.value(const [])
+    final reservedStream = currentUser == null
+        ? _singleValueStream<List<CalendarEvent>>(const [])
         : _eventService
             .watchReservedEvents(currentUser.uid)
             .map((events) => events.take(7).toList(growable: false));
-    _favoriteRefsStream = currentUser == null
-        ? Stream<List<FavoriteEventReference>>.value(const [])
+    _reservedEventsStream = reservedStream
+        .distinct((a, b) => _sameBySignature(a, b, _eventSignature));
+
+    final favoriteRefsStream = currentUser == null
+        ? _singleValueStream<List<FavoriteEventReference>>(const [])
         : _favoriteService.watchFavoriteReferences(currentUser.uid);
-    _upcomingEventsStream = _eventService.watchUpcomingEvents(limit: 30);
-    _homePageContentsStream = _homePageContentService.watchContents();
-    _activeCampaignsStream = _campaignService.watchActiveCampaigns();
+    _favoriteRefsStream = favoriteRefsStream
+        .distinct((a, b) => _sameBySignature(a, b, _favoriteSignature));
+
+    final upcomingEventsSource = _eventService
+        .watchUpcomingEvents(limit: 30)
+        .distinct((a, b) => _sameBySignature(a, b, _eventSignature));
+    _upcomingEventsStream = _shareReplayLatest(upcomingEventsSource);
+
+    _homePageContentsStream = _homePageContentService
+        .watchContents()
+        .distinct((a, b) => _sameBySignature(a, b, _homeContentSignature));
+
+    _activeCampaignsStream = _campaignService
+        .watchActiveCampaigns()
+        .distinct((a, b) => _sameBySignature(a, b, _campaignSignature));
+  }
+
+  bool _sameBySignature<T>(
+    List<T> a,
+    List<T> b,
+    String Function(T item) signature,
+  ) {
+    if (identical(a, b)) return true;
+    if (a.length != b.length) return false;
+    for (var i = 0; i < a.length; i++) {
+      if (signature(a[i]) != signature(b[i])) return false;
+    }
+    return true;
+  }
+
+  String _eventSignature(CalendarEvent event) {
+    return '${event.id}/${event.startDateTime.millisecondsSinceEpoch}/${event.endDateTime.millisecondsSinceEpoch}/${event.imageUrls.length}';
+  }
+
+  String _favoriteSignature(FavoriteEventReference ref) {
+    return '${ref.targetId}/${ref.eventId ?? ''}/${ref.existingEventId ?? ''}';
+  }
+
+  String _homeContentSignature(HomePageContent content) {
+    final updated = content.updatedAt?.millisecondsSinceEpoch ?? 0;
+    return '${content.id}/${content.displayOrder}/$updated/${content.imageUrls.length}';
+  }
+
+  String _campaignSignature(Campaign campaign) {
+    final end = campaign.displayEnd?.millisecondsSinceEpoch ?? 0;
+    final updated = campaign.updatedAt?.millisecondsSinceEpoch ?? 0;
+    return '${campaign.id}/$end/$updated';
+  }
+
+  Campaign _selectPriorityCampaign(List<Campaign> campaigns) {
+    if (campaigns.length == 1) return campaigns.first;
+    return campaigns.reduce((a, b) {
+      final aEnd = a.displayEnd ?? DateTime.fromMillisecondsSinceEpoch(0);
+      final bEnd = b.displayEnd ?? DateTime.fromMillisecondsSinceEpoch(0);
+      if (aEnd.isBefore(bEnd)) return a;
+      if (bEnd.isBefore(aEnd)) return b;
+      final aCreated = a.createdAt ?? DateTime.fromMillisecondsSinceEpoch(0);
+      final bCreated = b.createdAt ?? DateTime.fromMillisecondsSinceEpoch(0);
+      return aCreated.isBefore(bCreated) ? a : b;
+    });
   }
 
   void _showNotification(BuildContext context) {
@@ -234,346 +359,480 @@ class _HomePageState extends State<HomePage> {
   @override
   Widget build(BuildContext context) {
     return SafeArea(
-      child: ListView(
-        padding: const EdgeInsets.all(24),
-        children: [
-          _buildHeader(context),
-          const SizedBox(height: 32),
-          FutureBuilder<int>(
-            future: _pointsFuture,
-            builder: (context, snapshot) {
-              final isLoading =
-                  snapshot.connectionState == ConnectionState.waiting;
-              final points = snapshot.data ?? 0;
+      child: CustomScrollView(
+        slivers: [
+          SliverPadding(
+            padding: const EdgeInsets.fromLTRB(24, 24, 24, 0),
+            sliver: SliverList(
+              delegate: SliverChildListDelegate(
+                [
+                  _buildHeader(context),
+                  const SizedBox(height: 32),
+                  FutureBuilder<int>(
+                    future: _pointsFuture,
+                    builder: (context, snapshot) {
+                      final isLoading =
+                          snapshot.connectionState == ConnectionState.waiting;
+                      final points = snapshot.data ?? 0;
 
-              return Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  PointCard(
-                    points: points,
-                    isLoading: isLoading,
-                    onRefresh: () {
-                      _refreshPoints();
+                      return Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          PointCard(
+                            points: points,
+                            isLoading: isLoading,
+                            onRefresh: () {
+                              _refreshPoints();
+                            },
+                          ),
+                          if (snapshot.hasError && !isLoading)
+                            Padding(
+                              padding: const EdgeInsets.only(top: 12),
+                              child: Text(
+                                'ポイントの取得に失敗しました。更新ボタンをお試しください。',
+                                style: Theme.of(context)
+                                    .textTheme
+                                    .bodySmall
+                                    ?.copyWith(
+                                      color:
+                                          Theme.of(context).colorScheme.error,
+                                    ),
+                              ),
+                            ),
+                        ],
+                      );
                     },
                   ),
-                  if (snapshot.hasError && !isLoading)
-                    Padding(
-                      padding: const EdgeInsets.only(top: 12),
-                      child: Text(
-                        'ポイントの取得に失敗しました。更新ボタンをお試しください。',
-                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                            color: Theme.of(context).colorScheme.error),
+                  const SizedBox(height: 32),
+                  Material(
+                    color: Theme.of(context).colorScheme.primary,
+                    elevation: 4,
+                    shadowColor:
+                        Theme.of(context).colorScheme.primary.withOpacity(0.4),
+                    borderRadius: BorderRadius.circular(36),
+                    clipBehavior: Clip.antiAlias,
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 12,
+                      ),
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: _ShortcutItem(
+                              icon: Icons.event_available_outlined,
+                              label: 'イベント',
+                              onTap: _openEventsPage,
+                            ),
+                          ),
+                          Expanded(
+                            child: _ShortcutItem(
+                              icon: Icons.restaurant_menu_outlined,
+                              label: 'メニュー',
+                              onTap: _openMenuList,
+                            ),
+                          ),
+                          Expanded(
+                            child: _ShortcutItem(
+                              icon: Icons.assignment_turned_in_outlined,
+                              label: '予約',
+                              onTap: _openReservationHistory,
+                            ),
+                          ),
+                          Expanded(
+                            child: _ShortcutItem(
+                              icon: Icons.history,
+                              label: 'ポイント履歴',
+                              onTap: _openPointHistoryPage,
+                            ),
+                          ),
+                        ],
                       ),
                     ),
-                ],
-              );
-            },
-          ),
-          const SizedBox(height: 32),
-          Material(
-            color: Theme.of(context).colorScheme.primary,
-            elevation: 4,
-            shadowColor: Theme.of(context).colorScheme.primary.withOpacity(0.4),
-            borderRadius: BorderRadius.circular(36),
-            clipBehavior: Clip.antiAlias,
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: _ShortcutItem(
-                      icon: Icons.event_available_outlined,
-                      label: 'イベント',
-                      onTap: _openEventsPage,
-                    ),
                   ),
-                  Expanded(
-                    child: _ShortcutItem(
-                      icon: Icons.restaurant_menu_outlined,
-                      label: 'メニュー',
-                      onTap: _openMenuList,
-                    ),
+                  const SizedBox(height: 32),
+                  StreamBuilder<List<Campaign>>(
+                    stream: _activeCampaignsStream,
+                    initialData: _cachedActiveCampaigns,
+                    builder: (context, snapshot) {
+                      final campaigns = snapshot.data ?? const <Campaign>[];
+                      if (campaigns.isNotEmpty) {
+                        _cachedActiveCampaigns = campaigns;
+                      }
+                      final isLoading =
+                          snapshot.connectionState == ConnectionState.waiting;
+
+                      if (isLoading && campaigns.isEmpty) {
+                        if (_cachedActiveCampaigns.isNotEmpty) {
+                          return const SizedBox.shrink();
+                        }
+                        return const Center(
+                          child: Padding(
+                            padding: EdgeInsets.symmetric(vertical: 24),
+                            child: CircularProgressIndicator(),
+                          ),
+                        );
+                      }
+
+                      if (campaigns.isEmpty) {
+                        return const SizedBox.shrink();
+                      }
+
+                      final priorityCampaign =
+                          _selectPriorityCampaign(campaigns);
+                      final screenWidth = MediaQuery.sizeOf(context).width;
+                      final dpr = MediaQuery.of(context).devicePixelRatio;
+                      final campaignWidth =
+                          (screenWidth - 48).clamp(0.0, double.infinity);
+                      final campaignHeight = campaignWidth / 2;
+                      final campaignCacheWidth = (campaignWidth * dpr).round();
+                      final campaignCacheHeight =
+                          (campaignHeight * dpr).round();
+                      return Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'キャンペーン',
+                            style: Theme.of(context)
+                                .textTheme
+                                .titleMedium
+                                ?.copyWith(fontWeight: FontWeight.bold),
+                          ),
+                          const SizedBox(height: 12),
+                          AspectRatio(
+                            aspectRatio: 2 / 1,
+                            child: ClipRRect(
+                              borderRadius: BorderRadius.circular(16),
+                              child: _CampaignSlide(
+                                campaign: priorityCampaign,
+                                imageCacheWidth: campaignCacheWidth > 0
+                                    ? campaignCacheWidth
+                                    : null,
+                                imageCacheHeight: campaignCacheHeight > 0
+                                    ? campaignCacheHeight
+                                    : null,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 24),
+                        ],
+                      );
+                    },
                   ),
-                  Expanded(
-                    child: _ShortcutItem(
-                      icon: Icons.assignment_turned_in_outlined,
-                      label: '予約',
-                      onTap: _openReservationHistory,
-                    ),
+                  const SizedBox(height: 8),
+                  StreamBuilder<List<CalendarEvent>>(
+                    stream: _reservedEventsStream,
+                    builder: (context, snapshot) {
+                      final reservedEvents =
+                          (snapshot.data ?? const <CalendarEvent>[])
+                              .take(7)
+                              .toList(growable: false);
+
+                      if (snapshot.connectionState == ConnectionState.waiting &&
+                          reservedEvents.isEmpty) {
+                        return Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: const [
+                            _SectionHeader(title: '予約したイベント'),
+                            SizedBox(height: 12),
+                            Center(
+                              child: Padding(
+                                padding: EdgeInsets.symmetric(vertical: 32),
+                                child: CircularProgressIndicator(),
+                              ),
+                            ),
+                          ],
+                        );
+                      }
+
+                      if (reservedEvents.isEmpty) {
+                        return Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const _SectionHeader(title: '予約したイベント'),
+                            const SizedBox(height: 12),
+                            Container(
+                              padding: const EdgeInsets.all(24),
+                              decoration: BoxDecoration(
+                                color: Colors.grey.shade100,
+                                borderRadius: BorderRadius.circular(24),
+                              ),
+                              child: Text(
+                                '予約したイベントはまだありません',
+                                style: Theme.of(context)
+                                    .textTheme
+                                    .bodyMedium
+                                    ?.copyWith(color: Colors.grey.shade600),
+                              ),
+                            ),
+                          ],
+                        );
+                      }
+
+                      return Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const _SectionHeader(title: '予約したイベント'),
+                          const SizedBox(height: 12),
+                          _UpcomingEventsScroller(
+                            events: reservedEvents,
+                            onEventTap: _openEventDetail,
+                          ),
+                        ],
+                      );
+                    },
                   ),
-                  Expanded(
-                    child: _ShortcutItem(
-                      icon: Icons.history,
-                      label: 'ポイント履歴',
-                      onTap: _openPointHistoryPage,
-                    ),
+                  const SizedBox(height: 24),
+                  StreamBuilder<List<FavoriteEventReference>>(
+                    stream: _favoriteRefsStream,
+                    builder: (context, favoriteSnapshot) {
+                      final favoriteRefs = favoriteSnapshot.data ?? const [];
+                      final favoriteExistingIds = favoriteRefs
+                          .map((ref) => ref.existingEventId?.trim())
+                          .where((id) => id != null && id!.isNotEmpty)
+                          .cast<String>()
+                          .toSet();
+
+                      return StreamBuilder<List<CalendarEvent>>(
+                        stream: _upcomingEventsStream,
+                        builder: (context, eventSnapshot) {
+                          final upcomingEvents =
+                              eventSnapshot.data ?? const <CalendarEvent>[];
+                          final favoriteEvents = upcomingEvents
+                              .where(
+                                (event) =>
+                                    event.existingEventId != null &&
+                                    favoriteExistingIds
+                                        .contains(event.existingEventId),
+                              )
+                              .take(7)
+                              .toList(growable: false);
+
+                          final isLoading = favoriteSnapshot.connectionState ==
+                                  ConnectionState.waiting ||
+                              eventSnapshot.connectionState ==
+                                  ConnectionState.waiting;
+
+                          if (isLoading && favoriteEvents.isEmpty) {
+                            return Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: const [
+                                _SectionHeader(title: 'お気に入りのイベント'),
+                                SizedBox(height: 12),
+                                Center(
+                                  child: Padding(
+                                    padding: EdgeInsets.symmetric(vertical: 32),
+                                    child: CircularProgressIndicator(),
+                                  ),
+                                ),
+                              ],
+                            );
+                          }
+
+                          if (favoriteEvents.isEmpty) {
+                            return Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                const _SectionHeader(title: 'お気に入りのイベント'),
+                                const SizedBox(height: 12),
+                                Container(
+                                  padding: const EdgeInsets.all(24),
+                                  decoration: BoxDecoration(
+                                    color: Colors.grey.shade100,
+                                    borderRadius: BorderRadius.circular(24),
+                                  ),
+                                  child: Text(
+                                    'お気に入りのイベントはまだありません',
+                                    style: Theme.of(context)
+                                        .textTheme
+                                        .bodyMedium
+                                        ?.copyWith(color: Colors.grey.shade600),
+                                  ),
+                                ),
+                              ],
+                            );
+                          }
+
+                          return Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const _SectionHeader(title: 'お気に入りのイベント'),
+                              const SizedBox(height: 12),
+                              _UpcomingEventsScroller(
+                                events: favoriteEvents,
+                                onEventTap: _openEventDetail,
+                              ),
+                            ],
+                          );
+                        },
+                      );
+                    },
                   ),
+                  const SizedBox(height: 24),
+                  StreamBuilder<List<CalendarEvent>>(
+                    stream: _upcomingEventsStream,
+                    builder: (context, snapshot) {
+                      final upcomingEvents =
+                          (snapshot.data ?? const <CalendarEvent>[])
+                              .take(7)
+                              .toList(growable: false);
+
+                      if (snapshot.connectionState == ConnectionState.waiting &&
+                          upcomingEvents.isEmpty) {
+                        return Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: const [
+                            _SectionHeader(title: '直近のイベント'),
+                            SizedBox(height: 12),
+                            Center(
+                              child: Padding(
+                                padding: EdgeInsets.symmetric(vertical: 32),
+                                child: CircularProgressIndicator(),
+                              ),
+                            ),
+                          ],
+                        );
+                      }
+
+                      if (upcomingEvents.isEmpty) {
+                        return Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const _SectionHeader(title: '直近のイベント'),
+                            const SizedBox(height: 12),
+                            Container(
+                              padding: const EdgeInsets.all(24),
+                              decoration: BoxDecoration(
+                                color: Colors.grey.shade100,
+                                borderRadius: BorderRadius.circular(24),
+                              ),
+                              child: Text(
+                                '直近のイベントはまだありません',
+                                style: Theme.of(context)
+                                    .textTheme
+                                    .bodyMedium
+                                    ?.copyWith(color: Colors.grey.shade600),
+                              ),
+                            ),
+                          ],
+                        );
+                      }
+
+                      return Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const _SectionHeader(title: '直近のイベント'),
+                          const SizedBox(height: 12),
+                          _UpcomingEventsScroller(
+                            events: upcomingEvents,
+                            onEventTap: _openEventDetail,
+                          ),
+                        ],
+                      );
+                    },
+                  ),
+                  const SizedBox(height: 32),
+                  Text(
+                    'ホームページ',
+                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                          fontWeight: FontWeight.bold,
+                        ),
+                  ),
+                  const SizedBox(height: 12),
                 ],
               ),
             ),
           ),
-          const SizedBox(height: 32),
-          StreamBuilder<List<Campaign>>(
-            stream: _activeCampaignsStream,
-            builder: (context, snapshot) {
-              final campaigns = snapshot.data ?? const <Campaign>[];
-              final isLoading =
-                  snapshot.connectionState == ConnectionState.waiting;
-
-              if (isLoading && campaigns.isEmpty) {
-                return const Center(
-                  child: Padding(
-                    padding: EdgeInsets.symmetric(vertical: 24),
-                    child: CircularProgressIndicator(),
-                  ),
-                );
-              }
-
-              if (campaigns.isEmpty) {
-                return const SizedBox.shrink();
-              }
-
-              return Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'キャンペーン',
-                    style: Theme.of(context)
-                        .textTheme
-                        .titleMedium
-                        ?.copyWith(fontWeight: FontWeight.bold),
-                  ),
-                  const SizedBox(height: 12),
-                  _CampaignCarousel(campaigns: campaigns),
-                  const SizedBox(height: 24),
-                ],
-              );
-            },
-          ),
-          const SizedBox(height: 8),
-          StreamBuilder<List<CalendarEvent>>(
-            stream: _reservedEventsStream,
-            builder: (context, snapshot) {
-              final reservedEvents =
-                  (snapshot.data ?? const <CalendarEvent>[])
-                      .take(7)
-                      .toList(growable: false);
-
-              if (snapshot.connectionState == ConnectionState.waiting &&
-                  reservedEvents.isEmpty) {
-                return Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: const [
-                    _SectionHeader(title: '予約したイベント'),
-                    SizedBox(height: 12),
-                    Center(
-                      child: Padding(
-                        padding: EdgeInsets.symmetric(vertical: 32),
-                        child: CircularProgressIndicator(),
-                      ),
-                    ),
-                  ],
-                );
-              }
-
-              if (reservedEvents.isEmpty) {
-                return Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const _SectionHeader(title: '予約したイベント'),
-                    const SizedBox(height: 12),
-                    Container(
-                      padding: const EdgeInsets.all(24),
-                      decoration: BoxDecoration(
-                        color: Colors.grey.shade100,
-                        borderRadius: BorderRadius.circular(24),
-                      ),
-                      child: Text(
-                        '予約したイベントはまだありません',
-                        style: Theme.of(context)
-                            .textTheme
-                            .bodyMedium
-                            ?.copyWith(color: Colors.grey.shade600),
-                      ),
-                    ),
-                  ],
-                );
-              }
-
-              return Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const _SectionHeader(title: '予約したイベント'),
-                  const SizedBox(height: 12),
-                  _UpcomingEventsScroller(
-                    events: reservedEvents,
-                    onEventTap: _openEventDetail,
-                  ),
-                ],
-              );
-            },
-          ),
-          const SizedBox(height: 24),
-          StreamBuilder<List<FavoriteEventReference>>(
-            stream: _favoriteRefsStream,
-            builder: (context, favoriteSnapshot) {
-              final favoriteRefs = favoriteSnapshot.data ?? const [];
-              final favoriteExistingIds = favoriteRefs
-                  .map((ref) => ref.existingEventId?.trim())
-                  .where((id) => id != null && id!.isNotEmpty)
-                  .cast<String>()
-                  .toSet();
-
-              return StreamBuilder<List<CalendarEvent>>(
-                stream: _upcomingEventsStream,
-                builder: (context, eventSnapshot) {
-                  final upcomingEvents =
-                      eventSnapshot.data ?? const <CalendarEvent>[];
-                  final favoriteEvents = upcomingEvents
-                      .where(
-                        (event) =>
-                            event.existingEventId != null &&
-                            favoriteExistingIds.contains(event.existingEventId),
-                      )
-                      .take(7)
-                      .toList(growable: false);
-
-                  final isLoading = (favoriteSnapshot.connectionState ==
-                          ConnectionState.waiting ||
-                      eventSnapshot.connectionState == ConnectionState.waiting);
-
-                  if (isLoading && favoriteEvents.isEmpty) {
-                    return Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: const [
-                        _SectionHeader(title: 'お気に入りのイベント'),
-                        SizedBox(height: 12),
-                        Center(
-                          child: Padding(
-                            padding: EdgeInsets.symmetric(vertical: 32),
-                            child: CircularProgressIndicator(),
-                          ),
-                        ),
-                      ],
-                    );
-                  }
-
-                  if (favoriteEvents.isEmpty) {
-                    return Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const _SectionHeader(title: 'お気に入りのイベント'),
-                        const SizedBox(height: 12),
-                        Container(
-                          padding: const EdgeInsets.all(24),
-                          decoration: BoxDecoration(
-                            color: Colors.grey.shade100,
-                            borderRadius: BorderRadius.circular(24),
-                          ),
-                          child: Text(
-                            'お気に入りのイベントはまだありません',
-                            style: Theme.of(context)
-                                .textTheme
-                                .bodyMedium
-                                ?.copyWith(color: Colors.grey.shade600),
-                          ),
-                        ),
-                      ],
-                    );
-                  }
-
-                  return Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const _SectionHeader(title: 'お気に入りのイベント'),
-                      const SizedBox(height: 12),
-                      _UpcomingEventsScroller(
-                        events: favoriteEvents,
-                        onEventTap: _openEventDetail,
-                      ),
-                    ],
-                  );
-                },
-              );
-            },
-          ),
-          const SizedBox(height: 24),
-          StreamBuilder<List<CalendarEvent>>(
-            stream: _upcomingEventsStream,
-            builder: (context, snapshot) {
-              final upcomingEvents = (snapshot.data ?? const <CalendarEvent>[])
-                  .take(7)
-                  .toList(growable: false);
-
-              if (snapshot.connectionState == ConnectionState.waiting &&
-                  upcomingEvents.isEmpty) {
-                return Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: const [
-                    _SectionHeader(title: '直近のイベント'),
-                    SizedBox(height: 12),
-                    Center(
-                      child: Padding(
-                        padding: EdgeInsets.symmetric(vertical: 32),
-                        child: CircularProgressIndicator(),
-                      ),
-                    ),
-                  ],
-                );
-              }
-
-              if (upcomingEvents.isEmpty) {
-                return Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const _SectionHeader(title: '直近のイベント'),
-                    const SizedBox(height: 12),
-                    Container(
-                      padding: const EdgeInsets.all(24),
-                      decoration: BoxDecoration(
-                        color: Colors.grey.shade100,
-                        borderRadius: BorderRadius.circular(24),
-                      ),
-                      child: Text(
-                        '直近のイベントはまだありません',
-                        style: Theme.of(context)
-                            .textTheme
-                            .bodyMedium
-                            ?.copyWith(color: Colors.grey.shade600),
-                      ),
-                    ),
-                  ],
-                );
-              }
-
-              return Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const _SectionHeader(title: '直近のイベント'),
-                  const SizedBox(height: 12),
-                  _UpcomingEventsScroller(
-                    events: upcomingEvents,
-                    onEventTap: _openEventDetail,
-                  ),
-                ],
-              );
-            },
-          ),
-          const SizedBox(height: 32),
           StreamBuilder<List<HomePageContent>>(
             stream: _homePageContentsStream,
             builder: (context, snapshot) {
+              final contents = snapshot.data ?? const <HomePageContent>[];
               final isLoading =
                   snapshot.connectionState == ConnectionState.waiting;
-              final contents = snapshot.data ?? const <HomePageContent>[];
-              return _HomePageContentSection(
-                contents: contents,
-                isLoading: isLoading && contents.isEmpty,
+              final theme = Theme.of(context);
+              final screenWidth = MediaQuery.sizeOf(context).width;
+              final dpr = MediaQuery.of(context).devicePixelRatio;
+              final tileWidth =
+                  ((screenWidth - 48 - 16) / 2).clamp(0.0, double.infinity);
+              final tileCacheWidth = (tileWidth * dpr).round();
+              final tileCacheHeight = (tileWidth * dpr).round();
+
+              if (isLoading && contents.isEmpty) {
+                return const SliverPadding(
+                  padding: EdgeInsets.symmetric(horizontal: 24),
+                  sliver: SliverToBoxAdapter(
+                    child: Padding(
+                      padding: EdgeInsets.symmetric(vertical: 24),
+                      child: Center(child: CircularProgressIndicator()),
+                    ),
+                  ),
+                );
+              }
+
+              if (contents.isEmpty) {
+                return SliverPadding(
+                  padding: const EdgeInsets.symmetric(horizontal: 24),
+                  sliver: SliverToBoxAdapter(
+                    child: Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(24),
+                      decoration: BoxDecoration(
+                        color: Colors.grey.shade100,
+                        borderRadius: BorderRadius.circular(24),
+                      ),
+                      child: Text(
+                        'ホームページがまだ登録されていません',
+                        style: theme.textTheme.bodyMedium
+                            ?.copyWith(color: Colors.grey.shade600),
+                      ),
+                    ),
+                  ),
+                );
+              }
+
+              return SliverPadding(
+                padding: const EdgeInsets.symmetric(horizontal: 24),
+                sliver: SliverGrid(
+                  delegate: SliverChildBuilderDelegate(
+                    (context, index) {
+                      final content = contents[index];
+                      return RepaintBoundary(
+                        child: _HomePageContentCard(
+                          content: content,
+                          imageCacheWidth:
+                              tileCacheWidth > 0 ? tileCacheWidth : null,
+                          imageCacheHeight:
+                              tileCacheHeight > 0 ? tileCacheHeight : null,
+                          onTap: () {
+                            Navigator.of(context).push(
+                              MaterialPageRoute(
+                                builder: (_) =>
+                                    HomePageContentDetailPage(content: content),
+                              ),
+                            );
+                          },
+                        ),
+                      );
+                    },
+                    childCount: contents.length,
+                  ),
+                  gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                    crossAxisCount: 2,
+                    crossAxisSpacing: 16,
+                    mainAxisSpacing: 16,
+                    childAspectRatio: 0.75,
+                  ),
+                ),
               );
             },
           ),
-          const SizedBox(height: 32),
-          _BookOrderButton(onTap: _openBookOrderPage),
+          const SliverToBoxAdapter(child: SizedBox(height: 32)),
+          SliverPadding(
+            padding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
+            sliver: SliverToBoxAdapter(
+              child: _BookOrderButton(onTap: _openBookOrderPage),
+            ),
+          ),
         ],
       ),
     );
@@ -597,112 +856,18 @@ class _SectionHeader extends StatelessWidget {
   }
 }
 
-class _CampaignCarousel extends StatefulWidget {
-  const _CampaignCarousel({required this.campaigns});
-
-  final List<Campaign> campaigns;
-
-  @override
-  State<_CampaignCarousel> createState() => _CampaignCarouselState();
-}
-
-class _CampaignCarouselState extends State<_CampaignCarousel> {
-  late final PageController _pageController;
-  Timer? _timer;
-  int _currentPage = 0;
-
-  @override
-  void initState() {
-    super.initState();
-    _pageController = PageController();
-    _startAutoScroll();
-  }
-
-  @override
-  void didUpdateWidget(covariant _CampaignCarousel oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (widget.campaigns.length != oldWidget.campaigns.length) {
-      _currentPage = 0;
-      _pageController.jumpToPage(0);
-      _restartAutoScroll();
-    }
-  }
-
-  @override
-  void dispose() {
-    _timer?.cancel();
-    _pageController.dispose();
-    super.dispose();
-  }
-
-  void _startAutoScroll() {
-    if (widget.campaigns.length <= 1) return;
-    _timer?.cancel();
-    _timer = Timer.periodic(const Duration(seconds: 4), (_) {
-      if (!mounted || widget.campaigns.isEmpty) return;
-      final nextPage = (_currentPage + 1) % widget.campaigns.length;
-      _pageController.animateToPage(
-        nextPage,
-        duration: const Duration(milliseconds: 400),
-        curve: Curves.easeInOut,
-      );
-    });
-  }
-
-  void _restartAutoScroll() {
-    _timer?.cancel();
-    _startAutoScroll();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      children: [
-        AspectRatio(
-          aspectRatio: 2 / 1,
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(16),
-            child: PageView.builder(
-              controller: _pageController,
-              itemCount: widget.campaigns.length,
-              onPageChanged: (index) {
-                setState(() => _currentPage = index);
-              },
-              itemBuilder: (context, index) {
-                final campaign = widget.campaigns[index];
-                return _CampaignSlide(campaign: campaign);
-              },
-            ),
-          ),
-        ),
-        const SizedBox(height: 8),
-        Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: List.generate(widget.campaigns.length, (index) {
-            final isActive = index == _currentPage;
-            return AnimatedContainer(
-              duration: const Duration(milliseconds: 200),
-              margin: const EdgeInsets.symmetric(horizontal: 4),
-              width: isActive ? 12 : 8,
-              height: isActive ? 12 : 8,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: isActive
-                    ? Theme.of(context).colorScheme.primary
-                    : Colors.grey.shade400,
-              ),
-            );
-          }),
-        ),
-      ],
-    );
-  }
-}
-
 class _CampaignSlide extends StatelessWidget {
-  const _CampaignSlide({required this.campaign});
+  const _CampaignSlide({
+    required this.campaign,
+    this.imageCacheWidth,
+    this.imageCacheHeight,
+  });
 
   final Campaign campaign;
+  final int? imageCacheWidth;
+  final int? imageCacheHeight;
+  static const bool _disableNetworkImages =
+      bool.fromEnvironment('DISABLE_NETWORK_IMAGES');
 
   @override
   Widget build(BuildContext context) {
@@ -710,25 +875,36 @@ class _CampaignSlide extends StatelessWidget {
     return Stack(
       fit: StackFit.expand,
       children: [
-        hasImage
-            ? Image.network(
-                campaign.imageUrl!,
-                fit: BoxFit.cover,
-                errorBuilder: (_, __, ___) => Container(
+        if (_disableNetworkImages)
+          Container(
+            color: Colors.grey.shade200,
+            child: const Icon(Icons.image_outlined, size: 48),
+          )
+        else
+          hasImage
+              ? Image.network(
+                  campaign.imageUrl!,
+                  fit: BoxFit.cover,
+                  cacheWidth: imageCacheWidth,
+                  cacheHeight: imageCacheHeight,
+                  filterQuality: FilterQuality.none,
+                  isAntiAlias: false,
+                  gaplessPlayback: true,
+                  errorBuilder: (_, __, ___) => Container(
+                    color: Colors.grey.shade200,
+                    child: const Icon(Icons.broken_image_outlined, size: 48),
+                  ),
+                )
+              : Container(
                   color: Colors.grey.shade200,
-                  child: const Icon(Icons.broken_image_outlined, size: 48),
-                ),
-              )
-            : Container(
-                color: Colors.grey.shade200,
-                child: Center(
-                  child: Icon(
-                    Icons.local_offer_outlined,
-                    size: 48,
-                    color: Colors.grey.shade600,
+                  child: Center(
+                    child: Icon(
+                      Icons.local_offer_outlined,
+                      size: 48,
+                      color: Colors.grey.shade600,
+                    ),
                   ),
                 ),
-              ),
         Container(
           decoration: BoxDecoration(
             gradient: LinearGradient(
@@ -784,44 +960,46 @@ class _UpcomingEventsScroller extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final screenWidth = constraints.maxWidth;
-        const horizontalPadding = 24 * 2;
-        const double crossAxisSpacing = 16;
-        final availableWidth =
-            (screenWidth - horizontalPadding - crossAxisSpacing)
-                .clamp(0.0, double.infinity);
-        final cardWidth = availableWidth / 2;
-        const imageAspectRatio = 1;
-        final imageHeight = cardWidth / imageAspectRatio;
-        // Extra height to accommodate the additional date line on the card text.
-        final totalHeight = imageHeight + 84;
+    final dpr = MediaQuery.of(context).devicePixelRatio;
+    final screenWidth = MediaQuery.sizeOf(context).width;
+    const horizontalPadding = 24 * 2;
+    const double crossAxisSpacing = 16;
+    final availableWidth = (screenWidth - horizontalPadding - crossAxisSpacing)
+        .clamp(0.0, double.infinity);
+    final cardWidth = availableWidth / 2;
+    const imageAspectRatio = 1;
+    final imageHeight = cardWidth / imageAspectRatio;
+    final imageCacheWidth = (cardWidth * dpr).round();
+    final imageCacheHeight = (imageHeight * dpr).round();
+    // Extra height to accommodate the additional date line on the card text.
+    final totalHeight = imageHeight + 84;
 
-        return SizedBox(
-          height: totalHeight,
-          child: SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            primary: false,
-            physics: const ClampingScrollPhysics(),
-            padding: EdgeInsets.zero,
-            child: Row(
-              children: [
-                for (var i = 0; i < events.length; i++) ...[
-                  if (i != 0) const SizedBox(width: crossAxisSpacing),
-                  SizedBox(
-                    width: cardWidth,
-                    child: EventCard(
-                      event: events[i],
-                      onTap: () => onEventTap(events[i]),
-                    ),
-                  ),
-                ],
-              ],
+    return SizedBox(
+      height: totalHeight,
+      child: ListView.separated(
+        scrollDirection: Axis.horizontal,
+        primary: false,
+        physics: const ClampingScrollPhysics(),
+        padding: EdgeInsets.zero,
+        itemCount: events.length,
+        separatorBuilder: (context, index) =>
+            const SizedBox(width: crossAxisSpacing),
+        itemBuilder: (context, index) {
+          final event = events[index];
+          return SizedBox(
+            width: cardWidth,
+            child: RepaintBoundary(
+              child: EventCard(
+                event: event,
+                onTap: () => onEventTap(event),
+                imageCacheWidth: imageCacheWidth > 0 ? imageCacheWidth : null,
+                imageCacheHeight:
+                    imageCacheHeight > 0 ? imageCacheHeight : null,
+              ),
             ),
-          ),
-        );
-      },
+          );
+        },
+      ),
     );
   }
 }
@@ -923,120 +1101,46 @@ class _BookOrderButton extends StatelessWidget {
   }
 }
 
-class _HomePageContentSection extends StatelessWidget {
-  const _HomePageContentSection({
-    required this.contents,
-    required this.isLoading,
-  });
-
-  final List<HomePageContent> contents;
-  final bool isLoading;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    Widget child;
-    if (isLoading) {
-      child = const Padding(
-        padding: EdgeInsets.symmetric(vertical: 24),
-        child: Center(child: CircularProgressIndicator()),
-      );
-    } else if (contents.isEmpty) {
-      child = Container(
-        width: double.infinity,
-        padding: const EdgeInsets.all(24),
-        decoration: BoxDecoration(
-          color: Colors.grey.shade100,
-          borderRadius: BorderRadius.circular(24),
-        ),
-        child: Text(
-          'ホームページがまだ登録されていません',
-          style:
-              theme.textTheme.bodyMedium?.copyWith(color: Colors.grey.shade600),
-        ),
-      );
-    } else {
-      child = _HomePageContentGrid(contents: contents);
-    }
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          'ホームページ',
-          style: theme.textTheme.titleMedium?.copyWith(
-            fontWeight: FontWeight.bold,
-          ),
-        ),
-        const SizedBox(height: 12),
-        child,
-      ],
-    );
-  }
-}
-
-class _HomePageContentGrid extends StatelessWidget {
-  const _HomePageContentGrid({required this.contents});
-
-  final List<HomePageContent> contents;
-
-  @override
-  Widget build(BuildContext context) {
-    return GridView.builder(
-      padding: EdgeInsets.zero,
-      shrinkWrap: true,
-      physics: const NeverScrollableScrollPhysics(),
-      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-        crossAxisCount: 2,
-        crossAxisSpacing: 16,
-        mainAxisSpacing: 16,
-        childAspectRatio: 0.75,
-      ),
-      itemCount: contents.length,
-      itemBuilder: (context, index) {
-        final content = contents[index];
-        return _HomePageContentCard(
-          content: content,
-          onTap: () {
-            Navigator.of(context).push(
-              MaterialPageRoute(
-                builder: (_) => HomePageContentDetailPage(content: content),
-              ),
-            );
-          },
-        );
-      },
-    );
-  }
-}
-
 class _HomePageContentCard extends StatelessWidget {
   const _HomePageContentCard({
     required this.content,
     required this.onTap,
+    this.imageCacheWidth,
+    this.imageCacheHeight,
   });
 
   final HomePageContent content;
   final VoidCallback onTap;
+  final int? imageCacheWidth;
+  final int? imageCacheHeight;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final metadata = _buildMetadata(content);
-    return Card(
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-      clipBehavior: Clip.antiAlias,
-      child: InkWell(
-        onTap: onTap,
+    const radius = Radius.circular(20);
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: const BorderRadius.all(radius),
+          border: Border.all(color: Colors.black.withOpacity(0.08)),
+        ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            AspectRatio(
-              aspectRatio: 1,
-              child: _HomePageContentImage(
-                imageUrl: content.imageUrls.isNotEmpty
-                    ? content.imageUrls.first
-                    : null,
+            ClipRRect(
+              borderRadius: const BorderRadius.vertical(top: radius),
+              child: AspectRatio(
+                aspectRatio: 1,
+                child: _HomePageContentImage(
+                  imageUrl: content.imageUrls.isNotEmpty
+                      ? content.imageUrls.first
+                      : null,
+                  imageCacheWidth: imageCacheWidth,
+                  imageCacheHeight: imageCacheHeight,
+                ),
               ),
             ),
             Padding(
@@ -1109,12 +1213,30 @@ class _HomePageContentCard extends StatelessWidget {
 }
 
 class _HomePageContentImage extends StatelessWidget {
-  const _HomePageContentImage({this.imageUrl});
+  const _HomePageContentImage({
+    this.imageUrl,
+    this.imageCacheWidth,
+    this.imageCacheHeight,
+  });
 
+  static const bool _disableNetworkImages =
+      bool.fromEnvironment('DISABLE_NETWORK_IMAGES');
   final String? imageUrl;
+  final int? imageCacheWidth;
+  final int? imageCacheHeight;
 
   @override
   Widget build(BuildContext context) {
+    if (_disableNetworkImages) {
+      return Container(
+        color: Colors.grey.shade200,
+        alignment: Alignment.center,
+        child: Icon(
+          Icons.image_outlined,
+          color: Colors.grey.shade500,
+        ),
+      );
+    }
     if (imageUrl == null || imageUrl!.isEmpty) {
       return Container(
         color: Colors.grey.shade200,
@@ -1129,9 +1251,21 @@ class _HomePageContentImage extends StatelessWidget {
     return Image.network(
       imageUrl!,
       fit: BoxFit.cover,
+      cacheWidth: imageCacheWidth,
+      cacheHeight: imageCacheHeight,
+      filterQuality: FilterQuality.none,
+      isAntiAlias: false,
+      gaplessPlayback: true,
       loadingBuilder: (context, child, progress) {
         if (progress == null) return child;
-        return const Center(child: CircularProgressIndicator());
+        return Container(
+          color: Colors.grey.shade200,
+          alignment: Alignment.center,
+          child: Icon(
+            Icons.image_outlined,
+            color: Colors.grey.shade400,
+          ),
+        );
       },
       errorBuilder: (_, __, ___) => Container(
         color: Colors.grey.shade200,
