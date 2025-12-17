@@ -8,11 +8,15 @@ class EventCard extends StatelessWidget {
     required this.event,
     this.onTap,
     this.imageAspectRatio = 1,
+    this.imageCacheWidth,
+    this.imageCacheHeight,
   });
 
   final CalendarEvent event;
   final VoidCallback? onTap;
   final double imageAspectRatio;
+  final int? imageCacheWidth;
+  final int? imageCacheHeight;
 
   String _formatDate(DateTime dateTime) {
     final year = dateTime.year;
@@ -36,6 +40,7 @@ class EventCard extends StatelessWidget {
     final hasImage = event.imageUrls.isNotEmpty;
     final organizerLabel =
         event.organizer.isNotEmpty ? event.organizer : '主催者情報なし';
+    const borderRadius = BorderRadius.all(Radius.circular(20));
 
     Widget buildImage() {
       if (!hasImage) {
@@ -52,6 +57,8 @@ class EventCard extends StatelessWidget {
       return Image.network(
         event.imageUrls.first,
         fit: BoxFit.cover,
+        cacheWidth: imageCacheWidth,
+        cacheHeight: imageCacheHeight,
         loadingBuilder: (context, child, loadingProgress) {
           if (loadingProgress == null) return child;
           return const Center(child: CircularProgressIndicator());
@@ -70,10 +77,13 @@ class EventCard extends StatelessWidget {
       );
     }
 
-    return Card(
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+    return Material(
+      color: Colors.white,
+      shape: RoundedRectangleBorder(
+        borderRadius: borderRadius,
+        side: BorderSide(color: Colors.black.withOpacity(0.08)),
+      ),
       clipBehavior: Clip.antiAlias,
-      elevation: 2,
       child: InkWell(
         onTap: onTap,
         child: Column(
@@ -84,11 +94,10 @@ class EventCard extends StatelessWidget {
               child: buildImage(),
             ),
             Padding(
-              padding: const EdgeInsets.fromLTRB(12, 8, 12, 4),
+              padding: const EdgeInsets.all(12),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const SizedBox(height: 4),
                   Text(
                     event.name,
                     maxLines: 2,
@@ -104,17 +113,18 @@ class EventCard extends StatelessWidget {
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: theme.textTheme.bodySmall?.copyWith(
-                      color: Colors.grey.shade600,
+                      color: Colors.grey.shade700,
+                      fontWeight: FontWeight.w600,
                       height: 1.1,
                     ),
                   ),
-                  const SizedBox(height: 3),
+                  const SizedBox(height: 4),
                   Text(
                     organizerLabel,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: theme.textTheme.bodySmall?.copyWith(
-                      color: Colors.grey.shade600,
+                      color: Colors.grey.shade700,
                       fontWeight: FontWeight.w600,
                       height: 1.1,
                     ),
