@@ -197,12 +197,16 @@ class HomePageReservationListPage extends StatelessWidget {
         userReservationId: member.userReservationId,
       );
       if (member.userId?.isNotEmpty == true) {
-        await _notificationService.createPersonalNotification(
-          userId: member.userId!,
-          title: '受け取りが完了しました',
-          body: '${content.title} の受け取りが完了しました。ありがとうございました。',
-          category: '予約',
-        );
+        try {
+          await _notificationService.createPersonalNotification(
+            userId: member.userId!,
+            title: '受け取りが完了しました',
+            body: '${content.title} の受け取りが完了しました。ありがとうございました。',
+            category: '予約',
+          );
+        } catch (error) {
+          debugPrint('Failed to send completion notification: $error');
+        }
       }
       messenger.showSnackBar(
         const SnackBar(content: Text('予約を完了済みにしました')),

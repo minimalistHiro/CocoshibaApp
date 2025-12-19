@@ -23,6 +23,10 @@ service cloud.firestore {
     match /users/{userId} {
       allow read, write: if request.auth != null && request.auth.uid == userId;
 
+      match /home_page_reservations/{reservationId} {
+        allow create, update: if isOwner();
+      }
+
       // All subcollections under the user (e.g., interested_events, favorite_events, event_reservations)
       match /{subcollection=**}/{docId} {
         allow read, write: if request.auth != null && request.auth.uid == userId;
@@ -59,12 +63,14 @@ service cloud.firestore {
 
       // Interested users under an event
       match /interested_users/{uid} {
-        allow read, write: if request.auth != null && request.auth.uid == uid;
+        allow read: if signedIn();
+        allow write: if request.auth != null && request.auth.uid == uid;
       }
 
       // Favorite users under an event
       match /favorite_users/{uid} {
-        allow read, write: if request.auth != null && request.auth.uid == uid;
+        allow read: if signedIn();
+        allow write: if request.auth != null && request.auth.uid == uid;
       }
     }
 
@@ -74,7 +80,8 @@ service cloud.firestore {
       allow create, update, delete: if isOwner();
 
       match /favorite_users/{uid} {
-        allow read, write: if request.auth != null && request.auth.uid == uid;
+        allow read: if signedIn();
+        allow write: if request.auth != null && request.auth.uid == uid;
       }
     }
 
@@ -92,7 +99,7 @@ service cloud.firestore {
 
     // Home page contents
     match /home_pages/{docId} {
-      allow read: if request.auth != null;
+      allow read: if true;
       // write should be restricted to admins/owners if needed
 
       match /reservations/{reservationId} {
