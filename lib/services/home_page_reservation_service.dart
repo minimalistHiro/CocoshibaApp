@@ -1,4 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter/foundation.dart';
 
 import '../models/home_page_reservation_member.dart';
 
@@ -114,7 +115,7 @@ class HomePageReservationService {
     required bool isCompleted,
     String? userId,
     String? userReservationId,
-  }) {
+  }) async {
     final contentDocRef = _contentReservationsRef(contentId).doc(reservationId);
     final resolvedUserReservationId =
         (userReservationId != null && userReservationId.isNotEmpty)
@@ -136,7 +137,13 @@ class HomePageReservationService {
         SetOptions(merge: true),
       );
     }
-    return batch.commit();
+    try {
+      await batch.commit();
+    } on FirebaseException catch (e) {
+      debugPrint('Firestore error code: ${e.code}');
+      debugPrint('message: ${e.message}');
+      rethrow;
+    }
   }
 
   String _formatDate(DateTime date) {
