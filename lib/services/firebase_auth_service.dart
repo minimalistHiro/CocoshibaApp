@@ -71,6 +71,7 @@ class FirebaseAuthService {
     required String name,
     required String ageGroup,
     required String area,
+    required String gender,
     required String email,
     required String password,
     String? bio,
@@ -102,6 +103,8 @@ class FirebaseAuthService {
         'email': trimmedEmail,
         'ageGroup': ageGroup,
         'area': area,
+        'gender': gender,
+        'signUpPlatform': _signUpPlatform(),
         'photoUrl': photoUrl,
         'isOwner': false,
         'isSubOwner': false,
@@ -133,6 +136,27 @@ class FirebaseAuthService {
     final user = credential.user;
     if (user != null) {
       await _updateLastLogin(user);
+    }
+
+    return credential;
+  }
+
+  String _signUpPlatform() {
+    return 'app';
+  }
+
+  Future<UserCredential> createAccountWithEmailPassword({
+    required String email,
+    required String password,
+  }) async {
+    final credential = await _auth.createUserWithEmailAndPassword(
+      email: email.trim(),
+      password: password.trim(),
+    );
+
+    final user = credential.user;
+    if (user != null) {
+      await _ensureUserDocument(user);
     }
 
     return credential;
@@ -199,6 +223,7 @@ class FirebaseAuthService {
     required String name,
     required String ageGroup,
     required String area,
+    String? gender,
     String? bio,
     Uint8List? profileImageBytes,
   }) async {
@@ -221,6 +246,10 @@ class FirebaseAuthService {
       'area': area,
       'updatedAt': FieldValue.serverTimestamp(),
     };
+
+    if (gender != null) {
+      updateData['gender'] = gender;
+    }
 
     if (trimmedBio != null && trimmedBio.isNotEmpty) {
       updateData['bio'] = trimmedBio;
@@ -400,6 +429,8 @@ class FirebaseAuthService {
         'email': email,
         'ageGroup': '',
         'area': '',
+        'gender': '未回答',
+        'signUpPlatform': _signUpPlatform(),
         'photoUrl': photoUrl.isNotEmpty ? photoUrl : null,
         'isOwner': false,
         'isSubOwner': false,
@@ -419,6 +450,8 @@ class FirebaseAuthService {
     final currentName = (data?['name'] as String?)?.trim() ?? '';
     final currentEmail = (data?['email'] as String?)?.trim() ?? '';
     final currentPhotoUrl = (data?['photoUrl'] as String?)?.trim() ?? '';
+    final currentSignUpPlatform =
+        (data?['signUpPlatform'] as String?)?.trim() ?? '';
 
     if (currentName.isEmpty && displayName.isNotEmpty) {
       updates['name'] = displayName;
@@ -428,6 +461,9 @@ class FirebaseAuthService {
     }
     if (currentPhotoUrl.isEmpty && photoUrl.isNotEmpty) {
       updates['photoUrl'] = photoUrl;
+    }
+    if (currentSignUpPlatform.isEmpty) {
+      updates['signUpPlatform'] = _signUpPlatform();
     }
 
     await docRef.set(updates, SetOptions(merge: true));

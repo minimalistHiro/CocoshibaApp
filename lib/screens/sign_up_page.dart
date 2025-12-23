@@ -30,9 +30,11 @@ class _SignUpPageState extends State<SignUpPage> {
   bool _passwordVisible = false;
   bool _confirmPasswordVisible = false;
   Uint8List? _profileImageBytes;
-  _SignUpStep _currentStep = _SignUpStep.userInfo;
+  String? _profileImageUrl;
+  _SignUpStep _currentStep = _SignUpStep.credentials;
   String? _selectedAgeGroup;
   String? _selectedArea;
+  String? _selectedGender;
 
   final _ageGroups = const [
     '10代以下',
@@ -52,6 +54,12 @@ class _SignUpPageState extends State<SignUpPage> {
     '県外',
   ];
 
+  final _genders = const [
+    '男性',
+    '女性',
+    '未回答',
+  ];
+
   @override
   void dispose() {
     _nameController.dispose();
@@ -62,14 +70,9 @@ class _SignUpPageState extends State<SignUpPage> {
     super.dispose();
   }
 
-  Future<void> _submit() async {
+  Future<void> _submitCredentials() async {
     if (!_credentialsFormKey.currentState!.validate()) return;
     if (_isGoogleLoading) return;
-    if (_selectedAgeGroup == null || _selectedArea == null) {
-      setState(() => _currentStep = _SignUpStep.userInfo);
-      _showError('ユーザー情報を入力してください');
-      return;
-    }
 
     FocusScope.of(context).unfocus();
     setState(() {
@@ -78,20 +81,13 @@ class _SignUpPageState extends State<SignUpPage> {
     });
 
     try {
-      Uint8List? imageBytes = _profileImageBytes;
-
-      await _authService.signUp(
-        name: _nameController.text,
-        ageGroup: _selectedAgeGroup!,
-        area: _selectedArea!,
+      await _authService.createAccountWithEmailPassword(
         email: _emailController.text,
         password: _passwordController.text,
-        bio: _bioController.text,
-        profileImageBytes: imageBytes,
       );
 
       if (!mounted) return;
-      Navigator.of(context).popUntil((route) => route.isFirst);
+      await _moveToUserInfoStep();
     } on FirebaseAuthException catch (e) {
       debugPrint(
         'SignUp FirebaseAuthException code=${e.code}, message=${e.message}',
@@ -117,7 +113,7 @@ class _SignUpPageState extends State<SignUpPage> {
       await _authService.signInWithGoogle();
 
       if (!mounted) return;
-      Navigator.of(context).popUntil((route) => route.isFirst);
+      await _moveToUserInfoStep();
     } on FirebaseAuthException catch (e) {
       debugPrint(
         'Google SignUp FirebaseAuthException code=${e.code}, message=${e.message}',
@@ -131,6 +127,41 @@ class _SignUpPageState extends State<SignUpPage> {
     } finally {
       if (mounted) setState(() => _isGoogleLoading = false);
     }
+  }
+
+  Future<void> _moveToUserInfoStep() async {
+    final profile = await _authService.fetchCurrentUserProfile();
+    final photoUrl = await _authService.fetchProfileImageUrl();
+    if (!mounted) return;
+
+    final name = (profile?['name'] as String?)?.trim() ?? '';
+    final ageGroup = (profile?['ageGroup'] as String?)?.trim() ?? '';
+    final area = (profile?['area'] as String?)?.trim() ?? '';
+    final gender = (profile?['gender'] as String?)?.trim() ?? '';
+    final hasProfile = name.isNotEmpty &&
+        name != '未設定' &&
+        ageGroup.isNotEmpty &&
+        area.isNotEmpty &&
+        gender.isNotEmpty;
+
+    if (hasProfile) {
+      Navigator.of(context).popUntil((route) => route.isFirst);
+      return;
+    }
+
+    _nameController.text =
+        name == '未設定' ? '' : name.isNotEmpty ? name : '';
+    _bioController.text = (profile?['bio'] as String?)?.trim() ?? '';
+    _selectedAgeGroup = ageGroup.isNotEmpty ? ageGroup : null;
+    _selectedArea = area.isNotEmpty ? area : null;
+    _selectedGender = gender.isNotEmpty ? gender : '未回答';
+    _profileImageUrl = photoUrl;
+
+    setState(() {
+      _currentStep = _SignUpStep.userInfo;
+      _isLoading = false;
+      _isGoogleLoading = false;
+    });
   }
 
   void _showError(String message) {
@@ -150,23 +181,59 @@ class _SignUpPageState extends State<SignUpPage> {
       if (pickedFile == null) return;
       final bytes = await pickedFile.readAsBytes();
       if (!mounted) return;
-      setState(() => _profileImageBytes = bytes);
+      setState(() {
+        _profileImageBytes = bytes;
+        _profileImageUrl = null;
+      });
     } catch (e) {
       _showError('画像の選択に失敗しました');
     }
   }
 
-  void _goToCredentialsStep() {
-    if (_isLoading || _isGoogleLoading) return;
-    if (!_userInfoFormKey.currentState!.validate()) {
-      return;
+  ImageProvider? _currentProfileImageProvider() {
+    if (_profileImageBytes != null) {
+      return MemoryImage(_profileImageBytes!);
     }
-    setState(() => _currentStep = _SignUpStep.credentials);
+    if (_profileImageUrl != null && _profileImageUrl!.isNotEmpty) {
+      return NetworkImage(_profileImageUrl!);
+    }
+    return null;
   }
 
-  void _goBackToUserInfoStep() {
+  Future<void> _submitUserInfo() async {
     if (_isLoading || _isGoogleLoading) return;
-    setState(() => _currentStep = _SignUpStep.userInfo);
+    if (!_userInfoFormKey.currentState!.validate()) return;
+    if (_selectedAgeGroup == null ||
+        _selectedArea == null ||
+        _selectedGender == null) {
+      _showError('ユーザー情報を入力してください');
+      return;
+    }
+
+    FocusScope.of(context).unfocus();
+    setState(() => _isLoading = true);
+
+    try {
+      await _authService.updateProfile(
+        name: _nameController.text,
+        ageGroup: _selectedAgeGroup!,
+        area: _selectedArea!,
+        gender: _selectedGender!,
+        bio: _bioController.text,
+        profileImageBytes: _profileImageBytes,
+      );
+      if (!mounted) return;
+      Navigator.of(context).popUntil((route) => route.isFirst);
+    } on FirebaseAuthException catch (e) {
+      final message = e.message ?? 'ユーザー情報の保存に失敗しました';
+      _showError('[${e.code}] $message');
+    } catch (e, stackTrace) {
+      debugPrint('Profile update unexpected error: $e');
+      debugPrint('$stackTrace');
+      _showError('ユーザー情報の保存に失敗しました（詳細はデバッグログ参照）');
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
   }
 
   Widget _buildGoogleButton() {
@@ -241,10 +308,8 @@ class _SignUpPageState extends State<SignUpPage> {
                 CircleAvatar(
                   radius: 48,
                   backgroundColor: theme.colorScheme.primaryContainer,
-                  backgroundImage: _profileImageBytes != null
-                      ? MemoryImage(_profileImageBytes!)
-                      : null,
-                  child: _profileImageBytes == null
+                  backgroundImage: _currentProfileImageProvider(),
+                  child: _currentProfileImageProvider() == null
                       ? Icon(
                           Icons.camera_alt,
                           size: 32,
@@ -287,6 +352,26 @@ class _SignUpPageState extends State<SignUpPage> {
             validator: (value) {
               if (value == null || value.isEmpty) {
                 return 'ユーザー名を入力してください';
+              }
+              return null;
+            },
+          ),
+          const SizedBox(height: 16),
+          DropdownButtonFormField<String>(
+            decoration: const InputDecoration(labelText: '性別'),
+            value: _selectedGender,
+            items: _genders
+                .map(
+                  (gender) => DropdownMenuItem<String>(
+                    value: gender,
+                    child: Text(gender),
+                  ),
+                )
+                .toList(),
+            onChanged: (value) => setState(() => _selectedGender = value),
+            validator: (value) {
+              if (value == null || value.isEmpty) {
+                return '性別を選択してください';
               }
               return null;
             },
@@ -346,8 +431,14 @@ class _SignUpPageState extends State<SignUpPage> {
           ),
           const SizedBox(height: 24),
           FilledButton(
-            onPressed: _isLoading ? null : _goToCredentialsStep,
-            child: const Text('次へ'),
+            onPressed: _isLoading ? null : _submitUserInfo,
+            child: _isLoading
+                ? const SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Text('登録を完了する'),
           ),
         ],
       ),
@@ -446,7 +537,8 @@ class _SignUpPageState extends State<SignUpPage> {
           ),
           const SizedBox(height: 24),
           FilledButton(
-            onPressed: (_isLoading || _isGoogleLoading) ? null : _submit,
+            onPressed:
+                (_isLoading || _isGoogleLoading) ? null : _submitCredentials,
             child: _isLoading
                 ? const SizedBox(
                     width: 20,
@@ -455,11 +547,6 @@ class _SignUpPageState extends State<SignUpPage> {
                   )
                 : const Text('登録する'),
           ),
-          TextButton(
-            onPressed:
-                (_isLoading || _isGoogleLoading) ? null : _goBackToUserInfoStep,
-            child: const Text('戻って修正する'),
-          ),
         ],
       ),
     );
@@ -467,15 +554,19 @@ class _SignUpPageState extends State<SignUpPage> {
 
   @override
   Widget build(BuildContext context) {
+    final isUserInfoStep = _currentStep == _SignUpStep.userInfo;
     return Scaffold(
-      appBar: AppBar(title: const Text('新規会員登録')),
+      appBar: AppBar(
+        title: const Text('新規会員登録'),
+        automaticallyImplyLeading: !isUserInfoStep,
+      ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(24),
         child: AnimatedSwitcher(
           duration: const Duration(milliseconds: 250),
-          child: _currentStep == _SignUpStep.userInfo
-              ? _buildUserInfoForm(context)
-              : _buildCredentialsForm(),
+          child: _currentStep == _SignUpStep.credentials
+              ? _buildCredentialsForm()
+              : _buildUserInfoForm(context),
         ),
       ),
     );

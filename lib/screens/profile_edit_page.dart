@@ -27,6 +27,7 @@ class _ProfileEditPageState extends State<ProfileEditPage> {
   String? _photoUrl;
   String? _selectedAgeGroup;
   String? _selectedArea;
+  String? _selectedGender;
 
   final _ageGroups = const [
     '10代以下',
@@ -44,6 +45,12 @@ class _ProfileEditPageState extends State<ProfileEditPage> {
     '戸田市',
     'その他県内',
     '県外',
+  ];
+
+  final _genders = const [
+    '男性',
+    '女性',
+    '未回答',
   ];
 
   @override
@@ -73,6 +80,7 @@ class _ProfileEditPageState extends State<ProfileEditPage> {
       final bio = (profile?['bio'] as String?) ?? '';
       final ageGroup = profile?['ageGroup'] as String?;
       final area = profile?['area'] as String?;
+      final gender = profile?['gender'] as String?;
       if (!mounted) return;
       _nameController.text = name;
       _bioController.text = bio;
@@ -81,6 +89,7 @@ class _ProfileEditPageState extends State<ProfileEditPage> {
         _selectedImageBytes = null;
         _selectedAgeGroup = ageGroup;
         _selectedArea = area;
+        _selectedGender = gender;
       });
     } catch (_) {
       if (!mounted) return;
@@ -96,9 +105,11 @@ class _ProfileEditPageState extends State<ProfileEditPage> {
 
   Future<void> _saveProfile() async {
     if (!_formKey.currentState!.validate()) return;
-    if (_selectedAgeGroup == null || _selectedArea == null) {
+    if (_selectedAgeGroup == null ||
+        _selectedArea == null ||
+        _selectedGender == null) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('年代と住所を選択してください')),
+        const SnackBar(content: Text('性別、年代、住所を選択してください')),
       );
       return;
     }
@@ -110,6 +121,7 @@ class _ProfileEditPageState extends State<ProfileEditPage> {
         name: _nameController.text,
         ageGroup: _selectedAgeGroup!,
         area: _selectedArea!,
+        gender: _selectedGender!,
         bio: _bioController.text,
         profileImageBytes: _selectedImageBytes,
       );
@@ -266,6 +278,29 @@ class _ProfileEditPageState extends State<ProfileEditPage> {
                               }
                               if (value.trim().length > 40) {
                                 return '40文字以内で入力してください';
+                              }
+                              return null;
+                            },
+                          ),
+                          const SizedBox(height: 24),
+                          DropdownButtonFormField<String>(
+                            value: _selectedGender,
+                            decoration: const InputDecoration(labelText: '性別'),
+                            items: _genders
+                                .map(
+                                  (gender) => DropdownMenuItem<String>(
+                                    value: gender,
+                                    child: Text(gender),
+                                  ),
+                                )
+                                .toList(),
+                            onChanged: _isSaving
+                                ? null
+                                : (value) =>
+                                    setState(() => _selectedGender = value),
+                            validator: (value) {
+                              if (value == null || value.isEmpty) {
+                                return '性別を選択してください';
                               }
                               return null;
                             },
