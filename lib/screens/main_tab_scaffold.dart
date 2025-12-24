@@ -18,22 +18,25 @@ class _MainTabScaffoldState extends State<MainTabScaffold> {
   int _selectedIndex = 0;
   final PushNotificationService _pushNotificationService =
       PushNotificationService();
+  final HomePageController _homePageController = HomePageController();
 
-  final List<Widget> _pages = const [
-    HomePage(),
-    CalendarPage(),
-    BooksPage(),
-    AccountPage(),
+  late final List<Widget> _pages = [
+    HomePage(controller: _homePageController),
+    const CalendarPage(),
+    const BooksPage(),
+    const AccountPage(),
   ];
 
   void _setTab(int index) {
     setState(() => _selectedIndex = index);
   }
 
-  void _openQr() {
-    Navigator.of(context).push(
+  Future<void> _openQr() async {
+    await Navigator.of(context).push(
       MaterialPageRoute(builder: (_) => const QrCodePage()),
     );
+    if (!mounted) return;
+    _homePageController.refreshUserInfo();
   }
 
   @override

@@ -21,7 +21,17 @@ service cloud.firestore {
 
     // Each user can read/write their own profile
     match /users/{userId} {
-      allow read, write: if request.auth != null && request.auth.uid == userId;
+      allow read: if signedIn() &&
+          (request.auth.uid == userId || isOwner());
+      allow create: if signedIn() && request.auth.uid == userId;
+      allow update: if signedIn() &&
+          (request.auth.uid == userId ||
+              (isOwner() &&
+                  request.resource.data
+                      .diff(resource.data)
+                      .changedKeys()
+                      .hasOnly(['points', 'updatedAt'])));
+      allow delete: if signedIn() && request.auth.uid == userId;
 
       // Reactions under a user should be available to any signed-in user
       match /interested_events/{eventId} {
@@ -34,6 +44,11 @@ service cloud.firestore {
 
       match /home_page_reservations/{reservationId} {
         allow create, update: if isOwner();
+      }
+
+      match /pointHistories/{historyId} {
+        allow read: if signedIn() && request.auth.uid == userId;
+        allow create: if signedIn() && request.auth.uid == userId || isOwner();
       }
 
       // All subcollections under the user (e.g., interested_events, favorite_events, event_reservations)
