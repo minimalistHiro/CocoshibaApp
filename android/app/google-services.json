@@ -22,6 +22,22 @@
           }
         },
         {
+          "client_id": "618793511488-l31qv121crr3ksrr8gjge2hbbmu94907.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.groumap.cocoshiba",
+            "certificate_hash": "80004e51be6867ef878fa8a77b4d5867b523a12d"
+          }
+        },
+        {
+          "client_id": "618793511488-mqqf1sslef8cial3485ilfoj2sg7f4e8.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.groumap.cocoshiba",
+            "certificate_hash": "e533c106002e5949315d7c09369938d46cc375d4"
+          }
+        },
+        {
           "client_id": "618793511488-8i0gcco819toc78i0ru3fld999dhkrom.apps.googleusercontent.com",
           "client_type": 3
         }
