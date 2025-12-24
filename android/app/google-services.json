@@ -14,11 +14,11 @@
       },
       "oauth_client": [
         {
-          "client_id": "618793511488-540aeob5cc0pof5qb4umjlkhob0liiva.apps.googleusercontent.com",
+          "client_id": "618793511488-0j0dic01iaptfiuq5j5utsverbgelchi.apps.googleusercontent.com",
           "client_type": 1,
           "android_info": {
             "package_name": "com.groumap.cocoshiba",
-            "certificate_hash": "0aafcf2d3533a6b4997a408fa3f63b0fb6d3a5d6"
+            "certificate_hash": "89b1bfa047f56e950fab4e6d6ef8441b18d4d214"
           }
         },
         {
