@@ -21,8 +21,28 @@ import 'event_detail_page.dart';
 import 'events_page.dart';
 import 'new_user_coupon_page.dart';
 
+class HomePageController {
+  VoidCallback? _onRefresh;
+
+  void attach(VoidCallback onRefresh) {
+    _onRefresh = onRefresh;
+  }
+
+  void detach(VoidCallback onRefresh) {
+    if (_onRefresh == onRefresh) {
+      _onRefresh = null;
+    }
+  }
+
+  void refreshUserInfo() {
+    _onRefresh?.call();
+  }
+}
+
 class HomePage extends StatefulWidget {
-  const HomePage({super.key});
+  const HomePage({super.key, this.controller});
+
+  final HomePageController? controller;
 
   @override
   State<HomePage> createState() => _HomePageState();
@@ -42,6 +62,7 @@ class _HomePageState extends State<HomePage> {
   late final Stream<List<CalendarEvent>> _reservedEventsStream;
   late final Stream<List<CalendarEvent>> _upcomingEventsStream;
   late final Stream<List<HomePageContent>> _homePageContentsStream;
+  late final VoidCallback _externalRefresh;
 
   Stream<T> _singleValueStream<T>(T value) {
     return Stream<T>.multi((controller) {
@@ -110,6 +131,10 @@ class _HomePageState extends State<HomePage> {
   @override
   void initState() {
     super.initState();
+    _externalRefresh = () {
+      _reloadPoints(showMessage: false);
+    };
+    widget.controller?.attach(_externalRefresh);
     _pointsFuture = _authService.fetchCurrentUserPoints();
     final currentUser = _authService.currentUser;
     final reservedStream = currentUser == null
@@ -128,6 +153,21 @@ class _HomePageState extends State<HomePage> {
     _homePageContentsStream = _homePageContentService
         .watchContents()
         .distinct((a, b) => _sameBySignature(a, b, _homeContentSignature));
+  }
+
+  @override
+  void didUpdateWidget(covariant HomePage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.controller != widget.controller) {
+      oldWidget.controller?.detach(_externalRefresh);
+      widget.controller?.attach(_externalRefresh);
+    }
+  }
+
+  @override
+  void dispose() {
+    widget.controller?.detach(_externalRefresh);
+    super.dispose();
   }
 
   bool _sameBySignature<T>(
@@ -234,22 +274,20 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
-  Future<void> _refreshPoints() async {
+  Future<void> _reloadPoints({required bool showMessage}) async {
     final future = _authService.fetchCurrentUserPoints();
     setState(() {
       _pointsFuture = future;
     });
     try {
       await future;
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('ポイントを更新しました')),
-      );
+      if (!mounted || !showMessage) return;
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('ポイントを更新しました')));
     } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('ポイントの取得に失敗しました')),
-      );
+      if (!mounted || !showMessage) return;
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('ポイントの取得に失敗しました')));
     }
   }
 
@@ -352,7 +390,7 @@ class _HomePageState extends State<HomePage> {
                             points: points,
                             isLoading: isLoading,
                             onRefresh: () {
-                              _refreshPoints();
+                              _reloadPoints(showMessage: true);
                             },
                           ),
                           if (snapshot.hasError && !isLoading)
