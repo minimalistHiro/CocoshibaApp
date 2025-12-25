@@ -89,7 +89,11 @@ class _CalendarPageState extends State<CalendarPage> {
 
   void _openCreateEvent() {
     Navigator.of(context).push(
-      MaterialPageRoute(builder: (_) => const CreateEventPage()),
+      MaterialPageRoute(
+        builder: (_) => CreateEventPage(
+          initialDate: _selectedDate ?? DateTime.now(),
+        ),
+      ),
     );
   }
 

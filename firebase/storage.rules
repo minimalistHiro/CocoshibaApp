@@ -1,0 +1,41 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function ownerProfile() {
+      return firestore.get(/databases/(default)/documents/users/$(request.auth.uid)).data;
+    }
+
+    function isOwner() {
+      return isSignedIn() && (
+        ownerProfile().isOwner == true ||
+        ownerProfile().role == 'owner' ||
+        (ownerProfile().roles is list && ownerProfile().roles.hasAny(['owner']))
+      );
+    }
+
+    // Public read for event images; owner can write/delete.
+    match /event_images/{eventId}/{fileName} {
+      allow read: if true;
+      allow write, delete, create, update: if isOwner();
+    }
+
+    match /existing_event_images/{existingEventId}/{fileName} {
+      allow read: if true;
+      allow write, delete, create, update: if isOwner();
+    }
+
+    match /home_pages/{homePagesId}/{fileName} {
+      allow read: if true;
+      allow write, delete, create, update: if isOwner();
+    }
+
+    match /menu_images/{menuId}/{fileName} {
+      allow read: if true;
+      allow write, delete, create, update: if isOwner();
+    }
+  }
+}

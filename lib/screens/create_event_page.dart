@@ -9,7 +9,9 @@ import '../services/event_service.dart';
 import '../services/existing_event_service.dart';
 
 class CreateEventPage extends StatefulWidget {
-  const CreateEventPage({super.key});
+  const CreateEventPage({super.key, this.initialDate});
+
+  final DateTime? initialDate;
 
   @override
   State<CreateEventPage> createState() => _CreateEventPageState();
@@ -52,6 +54,8 @@ class _CreateEventPageState extends State<CreateEventPage> {
   bool _isImportingExistingImages = false;
   int _selectedColorIndex = 5;
   int _selectedCapacity = 10;
+  static const TimeOfDay _defaultStartTime = TimeOfDay(hour: 11, minute: 0);
+  static const TimeOfDay _defaultEndTime = TimeOfDay(hour: 18, minute: 0);
 
   TimeOfDay _roundToFiveMinutes(TimeOfDay time) {
     const interval = 5;
@@ -68,6 +72,19 @@ class _CreateEventPageState extends State<CreateEventPage> {
     final hour = time.hour.toString().padLeft(2, '0');
     final minute = time.minute.toString().padLeft(2, '0');
     return '$hour:$minute';
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    final date = widget.initialDate ?? DateTime.now();
+    final normalizedDate = DateTime(date.year, date.month, date.day);
+    _selectedDate = normalizedDate;
+    _dateController.text = _formatDateLabel(normalizedDate);
+    _startTime = _defaultStartTime;
+    _startTimeController.text = _formatTimeLabel(_defaultStartTime);
+    _endTime = _defaultEndTime;
+    _endTimeController.text = _formatTimeLabel(_defaultEndTime);
   }
 
   @override
