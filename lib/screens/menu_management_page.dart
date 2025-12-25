@@ -11,8 +11,32 @@ class MenuManagementPage extends StatefulWidget {
   State<MenuManagementPage> createState() => _MenuManagementPageState();
 }
 
-class _MenuManagementPageState extends State<MenuManagementPage> {
+class _MenuManagementPageState extends State<MenuManagementPage>
+    with SingleTickerProviderStateMixin {
   final MenuService _menuService = MenuService();
+  late final TabController _tabController;
+  final Map<MenuCategory, List<String>> _overrideOrderIds = {};
+  bool _isReordering = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _tabController =
+        TabController(length: MenuCategory.values.length, vsync: this);
+    _tabController.addListener(_handleTabChange);
+  }
+
+  @override
+  void dispose() {
+    _tabController.removeListener(_handleTabChange);
+    _tabController.dispose();
+    super.dispose();
+  }
+
+  void _handleTabChange() {
+    if (_tabController.indexIsChanging) return;
+    setState(() {});
+  }
 
   Future<void> _openForm({MenuItem? menu}) async {
     await Navigator.of(context).push(
@@ -103,6 +127,136 @@ class _MenuManagementPageState extends State<MenuManagementPage> {
     );
   }
 
+  List<MenuItem> _sortedMenusForCategory(
+    List<MenuItem> menus,
+    MenuCategory category,
+  ) {
+    final categoryMenus =
+        menus.where((menu) => menu.category == category).toList()
+          ..sort((a, b) {
+            final aOrder =
+                a.orderIndex ?? (a.createdAt?.millisecondsSinceEpoch ?? 0);
+            final bOrder =
+                b.orderIndex ?? (b.createdAt?.millisecondsSinceEpoch ?? 0);
+            if (aOrder != bOrder) return aOrder.compareTo(bOrder);
+            final aCreated = a.createdAt?.millisecondsSinceEpoch ?? 0;
+            final bCreated = b.createdAt?.millisecondsSinceEpoch ?? 0;
+            return aCreated.compareTo(bCreated);
+          });
+
+    final overrideIds = _overrideOrderIds[category];
+    if (overrideIds == null) return categoryMenus;
+
+    final menuById = {
+      for (final menu in categoryMenus) menu.id: menu,
+    };
+    final reordered = <MenuItem>[];
+    for (final id in overrideIds) {
+      final menu = menuById[id];
+      if (menu != null) reordered.add(menu);
+    }
+    for (final menu in categoryMenus) {
+      if (!overrideIds.contains(menu.id)) {
+        reordered.add(menu);
+      }
+    }
+    return reordered;
+  }
+
+  Future<void> _handleReorder({
+    required MenuCategory category,
+    required List<MenuItem> menus,
+    required int oldIndex,
+    required int newIndex,
+  }) async {
+    if (oldIndex < newIndex) {
+      newIndex -= 1;
+    }
+    final reordered = List<MenuItem>.from(menus);
+    final item = reordered.removeAt(oldIndex);
+    reordered.insert(newIndex, item);
+
+    setState(() {
+      _overrideOrderIds[category] =
+          reordered.map((menu) => menu.id).toList(growable: false);
+      _isReordering = true;
+    });
+
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      await _menuService.updateMenuOrder(
+        category: category,
+        menus: reordered,
+      );
+      if (!mounted) return;
+      setState(() {
+        _overrideOrderIds.remove(category);
+        _isReordering = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _overrideOrderIds.remove(category);
+        _isReordering = false;
+      });
+      messenger.showSnackBar(
+        const SnackBar(content: Text('並び替えの保存に失敗しました')),
+      );
+    }
+  }
+
+  Widget _buildFilteredList(List<MenuItem> menus) {
+    final selectedCategory = MenuCategory.values[_tabController.index];
+    final filteredMenus = _sortedMenusForCategory(menus, selectedCategory);
+
+    return Column(
+      children: [
+        TabBar(
+          controller: _tabController,
+          labelColor: Theme.of(context).colorScheme.primary,
+          unselectedLabelColor: Colors.grey.shade600,
+          indicatorColor: Theme.of(context).colorScheme.primary,
+          tabs: MenuCategory.values
+              .map((category) => Tab(text: category.label))
+              .toList(),
+        ),
+        const SizedBox(height: 12),
+        Expanded(
+          child: filteredMenus.isEmpty
+              ? Center(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.restaurant_menu_outlined,
+                          size: 64, color: Colors.grey.shade500),
+                      const SizedBox(height: 12),
+                      Text('${selectedCategory.label} のメニューはまだありません'),
+                    ],
+                  ),
+                )
+              : ReorderableListView(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
+                  onReorder: (oldIndex, newIndex) => _handleReorder(
+                    category: selectedCategory,
+                    menus: filteredMenus,
+                    oldIndex: oldIndex,
+                    newIndex: newIndex,
+                  ),
+                  children: [
+                    for (var index = 0; index < filteredMenus.length; index++)
+                      Padding(
+                        key: ValueKey(filteredMenus[index].id),
+                        padding: const EdgeInsets.only(bottom: 8),
+                        child: _buildMenuCard(filteredMenus[index]),
+                      ),
+                  ],
+                ),
+        ),
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -117,47 +271,56 @@ class _MenuManagementPageState extends State<MenuManagementPage> {
           ),
         ],
       ),
-      body: StreamBuilder<List<MenuItem>>(
-        stream: _menuService.watchMenus(),
-        builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.waiting) {
-            return const Center(child: CircularProgressIndicator());
-          }
+      body: Stack(
+        children: [
+          StreamBuilder<List<MenuItem>>(
+            stream: _menuService.watchMenus(),
+            builder: (context, snapshot) {
+              if (snapshot.connectionState == ConnectionState.waiting) {
+                return const Center(child: CircularProgressIndicator());
+              }
 
-          if (snapshot.hasError) {
-            return Center(
-              child: TextButton.icon(
-                onPressed: () => setState(() {}),
-                icon: const Icon(Icons.refresh),
-                label: const Text('読み込みに失敗しました。再試行'),
+              if (snapshot.hasError) {
+                return Center(
+                  child: TextButton.icon(
+                    onPressed: () => setState(() {}),
+                    icon: const Icon(Icons.refresh),
+                    label: const Text('読み込みに失敗しました。再試行'),
+                  ),
+                );
+              }
+
+              final menus = snapshot.data ?? [];
+              if (menus.isEmpty) {
+                return Center(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.restaurant_menu_outlined,
+                          size: 64, color: Colors.grey.shade500),
+                      const SizedBox(height: 16),
+                      const Text('登録されたメニューがありません'),
+                      const SizedBox(height: 8),
+                      const Text('右上のプラスボタンからメニューを追加しましょう'),
+                    ],
+                  ),
+                );
+              }
+
+              return _buildFilteredList(menus);
+            },
+          ),
+          if (_isReordering)
+            Positioned.fill(
+              child: IgnorePointer(
+                child: Container(
+                  color: Colors.black45,
+                  alignment: Alignment.center,
+                  child: const CircularProgressIndicator(),
+                ),
               ),
-            );
-          }
-
-          final menus = snapshot.data ?? [];
-          if (menus.isEmpty) {
-            return Center(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(Icons.restaurant_menu_outlined,
-                      size: 64, color: Colors.grey.shade500),
-                  const SizedBox(height: 16),
-                  const Text('登録されたメニューがありません'),
-                  const SizedBox(height: 8),
-                  const Text('右上のプラスボタンからメニューを追加しましょう'),
-                ],
-              ),
-            );
-          }
-
-          return ListView.separated(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
-            itemBuilder: (context, index) => _buildMenuCard(menus[index]),
-            separatorBuilder: (_, __) => const SizedBox(height: 8),
-            itemCount: menus.length,
-          );
-        },
+            ),
+        ],
       ),
     );
   }

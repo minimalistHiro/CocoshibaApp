@@ -84,7 +84,17 @@ class _MenuListPageState extends State<MenuListPage>
   Widget _buildFilteredGrid(List<MenuItem> menus) {
     final selectedCategory = MenuCategory.values[_tabController.index];
     final filteredMenus =
-        menus.where((menu) => menu.category == selectedCategory).toList();
+        menus.where((menu) => menu.category == selectedCategory).toList()
+          ..sort((a, b) {
+            final aOrder =
+                a.orderIndex ?? (a.createdAt?.millisecondsSinceEpoch ?? 0);
+            final bOrder =
+                b.orderIndex ?? (b.createdAt?.millisecondsSinceEpoch ?? 0);
+            if (aOrder != bOrder) return aOrder.compareTo(bOrder);
+            final aCreated = a.createdAt?.millisecondsSinceEpoch ?? 0;
+            final bCreated = b.createdAt?.millisecondsSinceEpoch ?? 0;
+            return aCreated.compareTo(bCreated);
+          });
 
     return Column(
       children: [

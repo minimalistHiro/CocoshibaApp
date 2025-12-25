@@ -121,6 +121,7 @@ class _MenuFormPageState extends State<MenuFormPage> {
           name: _nameController.text.trim(),
           price: price,
           category: _selectedCategory,
+          previousCategory: widget.menu!.category,
           newImage: _pickedImage,
           previousImageUrl: _initialImageUrl,
         );

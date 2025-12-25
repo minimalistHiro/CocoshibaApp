@@ -45,6 +45,7 @@ class MenuItem {
     required this.price,
     required this.category,
     this.imageUrl,
+    this.orderIndex,
     this.createdAt,
     this.updatedAt,
   });
@@ -54,6 +55,7 @@ class MenuItem {
   final int price;
   final MenuCategory category;
   final String? imageUrl;
+  final int? orderIndex;
   final DateTime? createdAt;
   final DateTime? updatedAt;
 
@@ -69,6 +71,7 @@ class MenuItem {
         data?['category'] as String?,
       ),
       imageUrl: data?['imageUrl'] as String?,
+      orderIndex: (data?['orderIndex'] as num?)?.toInt(),
       createdAt: timestamp is Timestamp ? timestamp.toDate() : null,
       updatedAt:
           updatedTimestamp is Timestamp ? updatedTimestamp.toDate() : null,
@@ -81,6 +84,7 @@ class MenuItem {
       'price': price,
       'category': category.firestoreValue,
       'imageUrl': imageUrl,
+      'orderIndex': orderIndex,
       'createdAt': createdAt,
       'updatedAt': updatedAt,
     };

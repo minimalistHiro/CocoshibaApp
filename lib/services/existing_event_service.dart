@@ -23,6 +23,21 @@ class ExistingEventService {
     return doc.exists;
   }
 
+  Future<int> _nextOrderIndex() async {
+    final snapshot = await _existingEventsRef.get();
+    int maxOrderIndex = -1;
+    for (final doc in snapshot.docs) {
+      final value = doc.data()['orderIndex'];
+      if (value is num && value.toInt() > maxOrderIndex) {
+        maxOrderIndex = value.toInt();
+      }
+    }
+    if (maxOrderIndex >= 0) {
+      return maxOrderIndex + 1;
+    }
+    return snapshot.docs.length;
+  }
+
   Future<String> createExistingEvent({
     required String name,
     required String organizer,
@@ -55,6 +70,7 @@ class ExistingEventService {
       }
     }
 
+    final orderIndex = await _nextOrderIndex();
     await docRef.set({
       'name': name,
       'organizer': organizer,
@@ -62,6 +78,7 @@ class ExistingEventService {
       'imageUrls': imageUrls,
       'colorValue': colorValue,
       'capacity': capacity,
+      'orderIndex': orderIndex,
       'createdAt': FieldValue.serverTimestamp(),
     });
     return docRef.id;
@@ -119,13 +136,32 @@ class ExistingEventService {
   }
 
   Stream<List<ExistingEvent>> watchExistingEvents() {
-    return _existingEventsRef
-        .orderBy('createdAt', descending: true)
-        .snapshots()
-        .map(
-          (snapshot) => snapshot.docs
-              .map(ExistingEvent.fromDocument)
-              .toList(growable: false),
-        );
+    return _existingEventsRef.snapshots().map((snapshot) {
+      final events =
+          snapshot.docs.map(ExistingEvent.fromDocument).toList(growable: false);
+      events.sort((a, b) {
+        final aOrder = a.orderIndex ?? (a.createdAt?.millisecondsSinceEpoch ?? 0);
+        final bOrder = b.orderIndex ?? (b.createdAt?.millisecondsSinceEpoch ?? 0);
+        if (aOrder != bOrder) return aOrder.compareTo(bOrder);
+        final aCreated = a.createdAt?.millisecondsSinceEpoch ?? 0;
+        final bCreated = b.createdAt?.millisecondsSinceEpoch ?? 0;
+        return aCreated.compareTo(bCreated);
+      });
+      return events;
+    });
+  }
+
+  Future<void> updateExistingEventOrder({
+    required List<ExistingEvent> events,
+  }) async {
+    final batch = _firestore.batch();
+    for (var i = 0; i < events.length; i++) {
+      final event = events[i];
+      batch.update(_existingEventsRef.doc(event.id), {
+        'orderIndex': i,
+        'updatedAt': FieldValue.serverTimestamp(),
+      });
+    }
+    await batch.commit();
   }
 }

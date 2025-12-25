@@ -10,6 +10,7 @@ class ExistingEvent {
     required this.imageUrls,
     required this.colorValue,
     required this.capacity,
+    this.orderIndex,
     this.createdAt,
   });
 
@@ -20,6 +21,7 @@ class ExistingEvent {
   final List<String> imageUrls;
   final int colorValue;
   final int capacity;
+  final int? orderIndex;
   final DateTime? createdAt;
 
   Color get color => Color(colorValue);
@@ -45,6 +47,7 @@ class ExistingEvent {
           const [],
       colorValue: data['colorValue'] as int? ?? Colors.blue.value,
       capacity: data['capacity'] as int? ?? 0,
+      orderIndex: (data['orderIndex'] as num?)?.toInt(),
       createdAt: _parse(data['createdAt']),
     );
   }

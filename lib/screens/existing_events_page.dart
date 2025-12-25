@@ -20,6 +20,8 @@ class _ExistingEventsPageState extends State<ExistingEventsPage> {
       _existingEventService.watchExistingEvents();
   late final Stream<Map<String, dynamic>?> _profileStream =
       _authService.watchCurrentUserProfile();
+  List<String>? _overrideOrderIds;
+  bool _isReordering = false;
 
   void _openCreate() {
     Navigator.of(context).push(
@@ -79,6 +81,61 @@ class _ExistingEventsPageState extends State<ExistingEventsPage> {
     );
   }
 
+  List<ExistingEvent> _applyOverrideOrder(List<ExistingEvent> events) {
+    final overrideIds = _overrideOrderIds;
+    if (overrideIds == null) return events;
+    final eventById = {for (final event in events) event.id: event};
+    final reordered = <ExistingEvent>[];
+    for (final id in overrideIds) {
+      final event = eventById[id];
+      if (event != null) reordered.add(event);
+    }
+    for (final event in events) {
+      if (!overrideIds.contains(event.id)) {
+        reordered.add(event);
+      }
+    }
+    return reordered;
+  }
+
+  Future<void> _handleReorder({
+    required List<ExistingEvent> events,
+    required int oldIndex,
+    required int newIndex,
+  }) async {
+    if (oldIndex < newIndex) {
+      newIndex -= 1;
+    }
+    final reordered = List<ExistingEvent>.from(events);
+    final item = reordered.removeAt(oldIndex);
+    reordered.insert(newIndex, item);
+
+    setState(() {
+      _overrideOrderIds =
+          reordered.map((event) => event.id).toList(growable: false);
+      _isReordering = true;
+    });
+
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      await _existingEventService.updateExistingEventOrder(events: reordered);
+      if (!mounted) return;
+      setState(() {
+        _overrideOrderIds = null;
+        _isReordering = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _overrideOrderIds = null;
+        _isReordering = false;
+      });
+      messenger.showSnackBar(
+        const SnackBar(content: Text('並び替えの保存に失敗しました')),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return StreamBuilder<Map<String, dynamic>?>(
@@ -102,40 +159,81 @@ class _ExistingEventsPageState extends State<ExistingEventsPage> {
                 : null,
           ),
           body: SafeArea(
-            child: Column(
+            child: Stack(
               children: [
-                Expanded(
-                  child: StreamBuilder<List<ExistingEvent>>(
-                    stream: _existingEventsStream,
-                    builder: (context, snapshot) {
-                      if (snapshot.hasError) {
-                        return _StateMessage(
-                          message: '既存イベントを読み込めませんでした: ${snapshot.error}',
-                        );
-                      }
+                Column(
+                  children: [
+                    Expanded(
+                      child: StreamBuilder<List<ExistingEvent>>(
+                        stream: _existingEventsStream,
+                        builder: (context, snapshot) {
+                          if (snapshot.hasError) {
+                            return _StateMessage(
+                              message:
+                                  '既存イベントを読み込めませんでした: ${snapshot.error}',
+                            );
+                          }
 
-                      if (snapshot.connectionState == ConnectionState.waiting) {
-                        return const Center(child: CircularProgressIndicator());
-                      }
+                          if (snapshot.connectionState ==
+                              ConnectionState.waiting) {
+                            return const Center(
+                                child: CircularProgressIndicator());
+                          }
 
-                      final events = snapshot.data ?? const <ExistingEvent>[];
-                      if (events.isEmpty) {
-                        return const _StateMessage(
-                          message: '登録されている既存イベントがありません',
-                        );
-                      }
+                          final events =
+                              _applyOverrideOrder(snapshot.data ?? const []);
+                          if (events.isEmpty) {
+                            return const _StateMessage(
+                              message: '登録されている既存イベントがありません',
+                            );
+                          }
 
-                      return ListView.separated(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 16, vertical: 24),
-                        itemCount: events.length,
-                        separatorBuilder: (_, __) => const SizedBox(height: 8),
-                        itemBuilder: (context, index) =>
-                            _buildEventCard(events[index]),
-                      );
-                    },
-                  ),
+                          if (!isOwner) {
+                            return ListView.separated(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 16, vertical: 24),
+                              itemCount: events.length,
+                              separatorBuilder: (_, __) =>
+                                  const SizedBox(height: 8),
+                              itemBuilder: (context, index) =>
+                                  _buildEventCard(events[index]),
+                            );
+                          }
+
+                          return ReorderableListView(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 16, vertical: 24),
+                            onReorder: (oldIndex, newIndex) => _handleReorder(
+                              events: events,
+                              oldIndex: oldIndex,
+                              newIndex: newIndex,
+                            ),
+                            children: [
+                              for (var index = 0;
+                                  index < events.length;
+                                  index++)
+                                Padding(
+                                  key: ValueKey(events[index].id),
+                                  padding: const EdgeInsets.only(bottom: 8),
+                                  child: _buildEventCard(events[index]),
+                                ),
+                            ],
+                          );
+                        },
+                      ),
+                    ),
+                  ],
                 ),
+                if (_isReordering)
+                  Positioned.fill(
+                    child: IgnorePointer(
+                      child: Container(
+                        color: Colors.black45,
+                        alignment: Alignment.center,
+                        child: const CircularProgressIndicator(),
+                      ),
+                    ),
+                  ),
               ],
             ),
           ),
