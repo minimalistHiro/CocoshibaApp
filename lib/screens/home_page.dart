@@ -4,11 +4,9 @@ import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../models/calendar_event.dart';
-import '../models/home_page_content.dart';
 import '../services/event_service.dart';
 import '../services/firebase_auth_service.dart';
 import '../services/notification_service.dart';
-import '../services/home_page_content_service.dart';
 import '../services/new_user_coupon_service.dart';
 import '../widgets/point_card.dart';
 import '../widgets/event_card.dart';
@@ -16,7 +14,6 @@ import 'menu_list_page.dart';
 import 'home_page_reservation_history_page.dart';
 import 'notification_page.dart';
 import 'point_history_page.dart';
-import 'home_page_content_detail_page.dart';
 import 'event_detail_page.dart';
 import 'events_page.dart';
 import 'new_user_coupon_page.dart';
@@ -52,8 +49,6 @@ class _HomePageState extends State<HomePage> {
   final FirebaseAuthService _authService = FirebaseAuthService();
   final EventService _eventService = EventService();
   final NotificationService _notificationService = NotificationService();
-  final HomePageContentService _homePageContentService =
-      HomePageContentService();
   final NewUserCouponService _newUserCouponService = NewUserCouponService();
   static final Uri _bookOrderFormUri = Uri.parse(
     'https://docs.google.com/forms/d/e/1FAIpQLSda9VfM-EMborsiY-h11leW1uXgNUPdwv3RFb4_I1GjwFSoOQ/viewform?pli=1',
@@ -61,7 +56,6 @@ class _HomePageState extends State<HomePage> {
   late Future<int> _pointsFuture;
   late final Stream<List<CalendarEvent>> _reservedEventsStream;
   late final Stream<List<CalendarEvent>> _upcomingEventsStream;
-  late final Stream<List<HomePageContent>> _homePageContentsStream;
   late final VoidCallback _externalRefresh;
 
   Stream<T> _singleValueStream<T>(T value) {
@@ -150,9 +144,6 @@ class _HomePageState extends State<HomePage> {
         .distinct((a, b) => _sameBySignature(a, b, _eventSignature));
     _upcomingEventsStream = _shareReplayLatest(upcomingEventsSource);
 
-    _homePageContentsStream = _homePageContentService
-        .watchContents()
-        .distinct((a, b) => _sameBySignature(a, b, _homeContentSignature));
   }
 
   @override
@@ -187,10 +178,6 @@ class _HomePageState extends State<HomePage> {
     return '${event.id}/${event.startDateTime.millisecondsSinceEpoch}/${event.endDateTime.millisecondsSinceEpoch}/${event.imageUrls.length}';
   }
 
-  String _homeContentSignature(HomePageContent content) {
-    final updated = content.updatedAt?.millisecondsSinceEpoch ?? 0;
-    return '${content.id}/${content.displayOrder}/$updated/${content.imageUrls.length}';
-  }
 
   void _showNotification(BuildContext context) {
     Navigator.of(context).push(
@@ -633,100 +620,9 @@ class _HomePageState extends State<HomePage> {
                       );
                     },
                   ),
-                  const SizedBox(height: 32),
-                  Text(
-                    'ホームページ',
-                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                          fontWeight: FontWeight.bold,
-                        ),
-                  ),
-                  const SizedBox(height: 12),
                 ],
               ),
             ),
-          ),
-          StreamBuilder<List<HomePageContent>>(
-            stream: _homePageContentsStream,
-            builder: (context, snapshot) {
-              final contents = snapshot.data ?? const <HomePageContent>[];
-              final isLoading =
-                  snapshot.connectionState == ConnectionState.waiting;
-              final theme = Theme.of(context);
-              final screenWidth = MediaQuery.sizeOf(context).width;
-              final dpr = MediaQuery.of(context).devicePixelRatio;
-              final tileWidth =
-                  ((screenWidth - 48 - 16) / 2).clamp(0.0, double.infinity);
-              final tileCacheWidth = (tileWidth * dpr).round();
-              final tileCacheHeight = (tileWidth * dpr).round();
-
-              if (isLoading && contents.isEmpty) {
-                return const SliverPadding(
-                  padding: EdgeInsets.symmetric(horizontal: 24),
-                  sliver: SliverToBoxAdapter(
-                    child: Padding(
-                      padding: EdgeInsets.symmetric(vertical: 24),
-                      child: Center(child: CircularProgressIndicator()),
-                    ),
-                  ),
-                );
-              }
-
-              if (contents.isEmpty) {
-                return SliverPadding(
-                  padding: const EdgeInsets.symmetric(horizontal: 24),
-                  sliver: SliverToBoxAdapter(
-                    child: Container(
-                      width: double.infinity,
-                      padding: const EdgeInsets.all(24),
-                      decoration: BoxDecoration(
-                        color: Colors.grey.shade100,
-                        borderRadius: BorderRadius.circular(24),
-                      ),
-                      child: Text(
-                        'ホームページがまだ登録されていません',
-                        style: theme.textTheme.bodyMedium
-                            ?.copyWith(color: Colors.grey.shade600),
-                      ),
-                    ),
-                  ),
-                );
-              }
-
-              return SliverPadding(
-                padding: const EdgeInsets.symmetric(horizontal: 24),
-                sliver: SliverGrid(
-                  delegate: SliverChildBuilderDelegate(
-                    (context, index) {
-                      final content = contents[index];
-                      return RepaintBoundary(
-                        child: _HomePageContentCard(
-                          content: content,
-                          imageCacheWidth:
-                              tileCacheWidth > 0 ? tileCacheWidth : null,
-                          imageCacheHeight:
-                              tileCacheHeight > 0 ? tileCacheHeight : null,
-                          onTap: () {
-                            Navigator.of(context).push(
-                              MaterialPageRoute(
-                                builder: (_) =>
-                                    HomePageContentDetailPage(content: content),
-                              ),
-                            );
-                          },
-                        ),
-                      );
-                    },
-                    childCount: contents.length,
-                  ),
-                  gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                    crossAxisCount: 2,
-                    crossAxisSpacing: 16,
-                    mainAxisSpacing: 16,
-                    childAspectRatio: 0.75,
-                  ),
-                ),
-              );
-            },
           ),
           const SliverToBoxAdapter(child: SizedBox(height: 32)),
           SliverPadding(
@@ -904,184 +800,6 @@ class _BookOrderButton extends StatelessWidget {
               ],
             ),
           ),
-        ),
-      ),
-    );
-  }
-}
-
-class _HomePageContentCard extends StatelessWidget {
-  const _HomePageContentCard({
-    required this.content,
-    required this.onTap,
-    this.imageCacheWidth,
-    this.imageCacheHeight,
-  });
-
-  final HomePageContent content;
-  final VoidCallback onTap;
-  final int? imageCacheWidth;
-  final int? imageCacheHeight;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final metadata = _buildMetadata(content);
-    const radius = Radius.circular(20);
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: const BorderRadius.all(radius),
-          border: Border.all(color: Colors.black.withOpacity(0.08)),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            ClipRRect(
-              borderRadius: const BorderRadius.vertical(top: radius),
-              child: AspectRatio(
-                aspectRatio: 1,
-                child: _HomePageContentImage(
-                  imageUrl: content.imageUrls.isNotEmpty
-                      ? content.imageUrls.first
-                      : null,
-                  imageCacheWidth: imageCacheWidth,
-                  imageCacheHeight: imageCacheHeight,
-                ),
-              ),
-            ),
-            Padding(
-              padding: const EdgeInsets.all(12),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    content.title,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: theme.textTheme.titleSmall?.copyWith(
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                  if (metadata != null) ...[
-                    const SizedBox(height: 4),
-                    Text(
-                      metadata,
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        color: Colors.grey.shade700,
-                        fontWeight: FontWeight.w600,
-                      ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ],
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  String? _buildMetadata(HomePageContent content) {
-    switch (content.genre) {
-      case HomePageGenre.sales:
-        final price = content.price;
-        if (price == null) return null;
-        return '¥${_formatNumber(price)}';
-      case HomePageGenre.event:
-        final date = content.eventDate;
-        if (date == null) return null;
-        final start = content.startTimeLabel ?? '--:--';
-        final end = content.endTimeLabel ?? '--:--';
-        return '${_formatDate(date)}  $start〜$end';
-      case HomePageGenre.news:
-        return null;
-    }
-  }
-
-  String _formatNumber(int value) {
-    final digits = value.toString().split('').reversed.toList();
-    final buffer = StringBuffer();
-    for (var i = 0; i < digits.length; i++) {
-      if (i != 0 && i % 3 == 0) {
-        buffer.write(',');
-      }
-      buffer.write(digits[i]);
-    }
-    return buffer.toString().split('').reversed.join();
-  }
-
-  String _formatDate(DateTime date) {
-    String twoDigits(int value) => value.toString().padLeft(2, '0');
-    return '${date.year}/${twoDigits(date.month)}/${twoDigits(date.day)}';
-  }
-}
-
-class _HomePageContentImage extends StatelessWidget {
-  const _HomePageContentImage({
-    this.imageUrl,
-    this.imageCacheWidth,
-    this.imageCacheHeight,
-  });
-
-  static const bool _disableNetworkImages =
-      bool.fromEnvironment('DISABLE_NETWORK_IMAGES');
-  final String? imageUrl;
-  final int? imageCacheWidth;
-  final int? imageCacheHeight;
-
-  @override
-  Widget build(BuildContext context) {
-    if (_disableNetworkImages) {
-      return Container(
-        color: Colors.grey.shade200,
-        alignment: Alignment.center,
-        child: Icon(
-          Icons.image_outlined,
-          color: Colors.grey.shade500,
-        ),
-      );
-    }
-    if (imageUrl == null || imageUrl!.isEmpty) {
-      return Container(
-        color: Colors.grey.shade200,
-        alignment: Alignment.center,
-        child: Icon(
-          Icons.image_outlined,
-          color: Colors.grey.shade500,
-        ),
-      );
-    }
-
-    return Image.network(
-      imageUrl!,
-      fit: BoxFit.cover,
-      cacheWidth: imageCacheWidth,
-      cacheHeight: imageCacheHeight,
-      filterQuality: FilterQuality.none,
-      isAntiAlias: false,
-      gaplessPlayback: true,
-      loadingBuilder: (context, child, progress) {
-        if (progress == null) return child;
-        return Container(
-          color: Colors.grey.shade200,
-          alignment: Alignment.center,
-          child: Icon(
-            Icons.image_outlined,
-            color: Colors.grey.shade400,
-          ),
-        );
-      },
-      errorBuilder: (_, __, ___) => Container(
-        color: Colors.grey.shade200,
-        alignment: Alignment.center,
-        child: Icon(
-          Icons.broken_image_outlined,
-          color: Colors.grey.shade500,
         ),
       ),
     );

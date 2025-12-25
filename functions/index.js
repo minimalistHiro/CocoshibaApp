@@ -483,6 +483,67 @@ exports.verifyEmailCode = functions
     return { verified: true };
   });
 
+exports.adminDeleteUser = functions
+  .region('us-central1')
+  .https.onCall(async (data, context) => {
+    if (!context.auth) {
+      throw new functions.https.HttpsError(
+        'unauthenticated',
+        'You must be signed in to delete users.'
+      );
+    }
+
+    const requesterId = context.auth.uid;
+    const requesterDoc = await db.collection('users').doc(requesterId).get();
+    const requesterData = requesterDoc.data() || {};
+    if (requesterData.isOwner !== true) {
+      throw new functions.https.HttpsError(
+        'permission-denied',
+        'Only owners can delete users.'
+      );
+    }
+
+    const targetUserId = (data?.userId || '').toString().trim();
+    if (!targetUserId) {
+      throw new functions.https.HttpsError(
+        'invalid-argument',
+        'Target userId is required.'
+      );
+    }
+
+    const requestId = (data?.requestId || '').toString().trim();
+
+    try {
+      await admin.auth().deleteUser(targetUserId);
+    } catch (error) {
+      if (error?.code !== 'auth/user-not-found') {
+        functions.logger.error('Failed to delete auth user', { error, targetUserId });
+        throw new functions.https.HttpsError(
+          'internal',
+          'Failed to delete auth user.'
+        );
+      }
+    }
+
+    const batch = db.batch();
+    batch.delete(db.collection('users').doc(targetUserId));
+    if (requestId) {
+      batch.delete(db.collection('data_deletion_requests').doc(requestId));
+    }
+
+    const requestSnapshots = await db
+      .collection('data_deletion_requests')
+      .where('userId', '==', targetUserId)
+      .get();
+    requestSnapshots.docs.forEach((doc) => {
+      batch.delete(doc.ref);
+    });
+
+    await batch.commit();
+
+    return { success: true };
+  });
+
 async function sendAnnouncementBatches({
   tokens,
   tokenOwners,

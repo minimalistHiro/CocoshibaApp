@@ -16,6 +16,7 @@ import 'profile_edit_page.dart';
 import 'support_help_page.dart';
 import 'home_screen_editor_page.dart';
 import 'user_chat_support_page.dart';
+import 'data_deletion_requests_page.dart';
 
 class AccountPage extends StatefulWidget {
   const AccountPage({super.key});
@@ -502,6 +503,17 @@ class _AccountPageState extends State<AccountPage> {
                     ),
                     _buildSettingCard(
                       context: context,
+                      icon: Icons.delete_forever_outlined,
+                      title: 'データ削除申請者一覧',
+                      subtitle: '削除申請をしたユーザーを確認',
+                      onTap: () => Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (_) => const DataDeletionRequestsPage(),
+                        ),
+                      ),
+                    ),
+                    _buildSettingCard(
+                      context: context,
                       icon: Icons.restaurant_menu_outlined,
                       title: 'メニュー管理',
                       subtitle: 'メニュー一覧の編集・追加',
@@ -536,15 +548,6 @@ class _AccountPageState extends State<AccountPage> {
                 minimumSize: const Size.fromHeight(48),
                 backgroundColor: Theme.of(context).colorScheme.error,
                 foregroundColor: Theme.of(context).colorScheme.onError,
-              ),
-            ),
-            const SizedBox(height: 16),
-            TextButton.icon(
-              onPressed: _isDeleting ? null : () => _confirmAndDelete(context),
-              icon: const Icon(Icons.delete_forever),
-              label: const Text('アカウント削除'),
-              style: TextButton.styleFrom(
-                foregroundColor: Theme.of(context).colorScheme.error,
               ),
             ),
           ],

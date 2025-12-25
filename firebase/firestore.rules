@@ -120,6 +120,13 @@ service cloud.firestore {
       allow read, update, delete: if isOwner();
     }
 
+    // Data deletion requests
+    match /data_deletion_requests/{requestId} {
+      allow create: if signedIn() &&
+          request.resource.data.userId == request.auth.uid;
+      allow read, update, delete: if isOwner();
+    }
+
     // Home page contents
     match /home_pages/{docId} {
       allow read: if true;
