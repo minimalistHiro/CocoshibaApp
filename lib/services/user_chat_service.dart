@@ -167,6 +167,7 @@ class UserChatService {
         .set(
       {
         'lastReadAt': FieldValue.serverTimestamp(),
+        'viewerId': viewerId,
       },
       SetOptions(merge: true),
     );
@@ -176,7 +177,7 @@ class UserChatService {
       String viewerId) {
     return _firestore
         .collectionGroup('readStatus')
-        .where(FieldPath.documentId, isEqualTo: viewerId)
+        .where('viewerId', isEqualTo: viewerId)
         .snapshots()
         .map((snapshot) {
       final map = <String, DateTime?>{};

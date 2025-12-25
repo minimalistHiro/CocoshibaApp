@@ -505,8 +505,8 @@ class _ImagePickerGrid extends StatelessWidget {
         const SizedBox(height: 12),
         if (isBusy && images.isEmpty)
           Container(
-            width: 110,
-            height: 110,
+            width: 100,
+            height: 100,
             alignment: Alignment.center,
             child: const CircularProgressIndicator(),
           )
@@ -520,14 +520,11 @@ class _ImagePickerGrid extends StatelessWidget {
                   children: [
                     ClipRRect(
                       borderRadius: BorderRadius.circular(12),
-                      child: AspectRatio(
-                        aspectRatio: 1,
-                        child: Image.file(
-                          File(image.path),
-                          fit: BoxFit.cover,
-                          width: 110,
-                          height: 110,
-                        ),
+                      child: Image.file(
+                        File(image.path),
+                        fit: BoxFit.cover,
+                        width: 100,
+                        height: 100,
                       ),
                     ),
                     Positioned(
@@ -555,8 +552,8 @@ class _ImagePickerGrid extends StatelessWidget {
                 GestureDetector(
                   onTap: isBusy ? null : onAdd,
                   child: Container(
-                    width: 110,
-                    height: 110,
+                    width: 100,
+                    height: 100,
                     decoration: BoxDecoration(
                       borderRadius: BorderRadius.circular(12),
                       border: Border.all(color: Colors.grey.shade400),

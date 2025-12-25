@@ -423,7 +423,7 @@ class _ClosedDaysMonthGrid extends StatelessWidget {
                     child: Text(
                       '定休日',
                       style: TextStyle(
-                        fontSize: 11,
+                        fontSize: 9,
                         color: Colors.grey.shade800,
                         fontWeight: FontWeight.w600,
                       ),
@@ -440,7 +440,7 @@ class _ClosedDaysMonthGrid extends StatelessWidget {
                     child: Text(
                       '選択中',
                       style: TextStyle(
-                        fontSize: 11,
+                        fontSize: 9,
                         color: Colors.blue.shade800,
                         fontWeight: FontWeight.w600,
                       ),
