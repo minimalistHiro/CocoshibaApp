@@ -1,8 +1,10 @@
 import 'dart:typed_data';
 
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:sign_in_with_apple/sign_in_with_apple.dart';
 
 import '../services/firebase_auth_service.dart';
 
@@ -27,6 +29,7 @@ class _SignUpPageState extends State<SignUpPage> {
   final _authService = FirebaseAuthService();
   bool _isLoading = false;
   bool _isGoogleLoading = false;
+  bool _isAppleLoading = false;
   bool _passwordVisible = false;
   bool _confirmPasswordVisible = false;
   Uint8List? _profileImageBytes;
@@ -35,6 +38,9 @@ class _SignUpPageState extends State<SignUpPage> {
   String? _selectedAgeGroup;
   String? _selectedArea;
   String? _selectedGender;
+
+  bool get _canUseAppleSignIn =>
+      !kIsWeb && defaultTargetPlatform == TargetPlatform.iOS;
 
   final _ageGroups = const [
     '10代以下',
@@ -72,12 +78,13 @@ class _SignUpPageState extends State<SignUpPage> {
 
   Future<void> _submitCredentials() async {
     if (!_credentialsFormKey.currentState!.validate()) return;
-    if (_isGoogleLoading) return;
+    if (_isGoogleLoading || _isAppleLoading) return;
 
     FocusScope.of(context).unfocus();
     setState(() {
       _isLoading = true;
       _isGoogleLoading = false;
+      _isAppleLoading = false;
     });
 
     try {
@@ -107,7 +114,10 @@ class _SignUpPageState extends State<SignUpPage> {
     if (_isLoading) return;
 
     FocusScope.of(context).unfocus();
-    setState(() => _isGoogleLoading = true);
+    setState(() {
+      _isGoogleLoading = true;
+      _isAppleLoading = false;
+    });
 
     try {
       await _authService.signInWithGoogle();
@@ -126,6 +136,35 @@ class _SignUpPageState extends State<SignUpPage> {
       _showError('Googleでの登録に失敗しました');
     } finally {
       if (mounted) setState(() => _isGoogleLoading = false);
+    }
+  }
+
+  Future<void> _signUpWithApple() async {
+    if (_isLoading || _isGoogleLoading || _isAppleLoading) return;
+
+    FocusScope.of(context).unfocus();
+    setState(() {
+      _isAppleLoading = true;
+      _isGoogleLoading = false;
+    });
+
+    try {
+      await _authService.signInWithApple();
+
+      if (!mounted) return;
+      await _moveToUserInfoStep();
+    } on FirebaseAuthException catch (e) {
+      debugPrint(
+        'Apple SignUp FirebaseAuthException code=${e.code}, message=${e.message}',
+      );
+      final message = e.message ?? 'Appleでの登録に失敗しました';
+      _showError('[${e.code}] $message');
+    } catch (e, stackTrace) {
+      debugPrint('Apple SignUp unexpected error: $e');
+      debugPrint('$stackTrace');
+      _showError('Appleでの登録に失敗しました');
+    } finally {
+      if (mounted) setState(() => _isAppleLoading = false);
     }
   }
 
@@ -170,7 +209,7 @@ class _SignUpPageState extends State<SignUpPage> {
   }
 
   Future<void> _pickImage() async {
-    if (_isLoading || _isGoogleLoading) return;
+    if (_isLoading || _isGoogleLoading || _isAppleLoading) return;
     try {
       final pickedFile = await _picker.pickImage(
         source: ImageSource.gallery,
@@ -201,7 +240,7 @@ class _SignUpPageState extends State<SignUpPage> {
   }
 
   Future<void> _submitUserInfo() async {
-    if (_isLoading || _isGoogleLoading) return;
+    if (_isLoading || _isGoogleLoading || _isAppleLoading) return;
     if (!_userInfoFormKey.currentState!.validate()) return;
     if (_selectedAgeGroup == null ||
         _selectedArea == null ||
@@ -238,7 +277,7 @@ class _SignUpPageState extends State<SignUpPage> {
 
   Widget _buildGoogleButton() {
     final theme = Theme.of(context);
-    final isDisabled = _isLoading || _isGoogleLoading;
+    final isDisabled = _isLoading || _isGoogleLoading || _isAppleLoading;
     return SizedBox(
       height: 52,
       child: OutlinedButton(
@@ -285,6 +324,39 @@ class _SignUpPageState extends State<SignUpPage> {
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _buildAppleButton() {
+    final isDisabled = _isLoading || _isGoogleLoading || _isAppleLoading;
+    return SizedBox(
+      height: 52,
+      child: Stack(
+        alignment: Alignment.center,
+        children: [
+          Opacity(
+            opacity: isDisabled ? 0.6 : 1,
+            child: IgnorePointer(
+              ignoring: isDisabled,
+              child: SignInWithAppleButton(
+                onPressed: _signUpWithApple,
+                style: SignInWithAppleButtonStyle.black,
+                height: 52,
+                borderRadius: BorderRadius.circular(26),
+              ),
+            ),
+          ),
+          if (_isAppleLoading)
+            const SizedBox(
+              width: 22,
+              height: 22,
+              child: CircularProgressIndicator(
+                strokeWidth: 2,
+                valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+              ),
+            ),
+        ],
       ),
     );
   }
@@ -451,6 +523,10 @@ class _SignUpPageState extends State<SignUpPage> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
+          if (_canUseAppleSignIn) ...[
+            _buildAppleButton(),
+            const SizedBox(height: 16),
+          ],
           _buildGoogleButton(),
           const SizedBox(height: 16),
           Row(
@@ -538,7 +614,9 @@ class _SignUpPageState extends State<SignUpPage> {
           const SizedBox(height: 24),
           FilledButton(
             onPressed:
-                (_isLoading || _isGoogleLoading) ? null : _submitCredentials,
+                (_isLoading || _isGoogleLoading || _isAppleLoading)
+                    ? null
+                    : _submitCredentials,
             child: _isLoading
                 ? const SizedBox(
                     width: 20,

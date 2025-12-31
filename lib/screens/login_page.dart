@@ -1,5 +1,7 @@
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:sign_in_with_apple/sign_in_with_apple.dart';
 
 import '../services/firebase_auth_service.dart';
 import 'sign_up_page.dart';
@@ -19,7 +21,11 @@ class _LoginPageState extends State<LoginPage> {
 
   bool _isLoading = false;
   bool _isGoogleLoading = false;
+  bool _isAppleLoading = false;
   bool _passwordVisible = false;
+
+  bool get _canUseAppleSignIn =>
+      !kIsWeb && defaultTargetPlatform == TargetPlatform.iOS;
 
   @override
   void dispose() {
@@ -61,6 +67,7 @@ class _LoginPageState extends State<LoginPage> {
     setState(() {
       _isGoogleLoading = true;
       _isLoading = false;
+      _isAppleLoading = false;
     });
 
     try {
@@ -79,6 +86,32 @@ class _LoginPageState extends State<LoginPage> {
     }
   }
 
+  Future<void> _signInWithApple() async {
+    if (_isLoading || _isGoogleLoading || _isAppleLoading) return;
+
+    FocusScope.of(context).unfocus();
+    setState(() {
+      _isAppleLoading = true;
+      _isLoading = false;
+      _isGoogleLoading = false;
+    });
+
+    try {
+      await _authService.signInWithApple();
+
+      if (!mounted) return;
+      Navigator.of(context).popUntil((route) => route.isFirst);
+    } on FirebaseAuthException catch (e) {
+      _showError(e.message ?? 'Appleサインインに失敗しました');
+    } catch (_) {
+      _showError('Appleサインインに失敗しました');
+    } finally {
+      if (mounted) {
+        setState(() => _isAppleLoading = false);
+      }
+    }
+  }
+
   void _showError(String message) {
     ScaffoldMessenger.of(context)
         .showSnackBar(SnackBar(content: Text(message)));
@@ -92,7 +125,7 @@ class _LoginPageState extends State<LoginPage> {
 
   Widget _buildGoogleButton() {
     final theme = Theme.of(context);
-    final isDisabled = _isLoading || _isGoogleLoading;
+    final isDisabled = _isLoading || _isGoogleLoading || _isAppleLoading;
     return SizedBox(
       height: 52,
       child: OutlinedButton(
@@ -142,6 +175,39 @@ class _LoginPageState extends State<LoginPage> {
     );
   }
 
+  Widget _buildAppleButton() {
+    final isDisabled = _isLoading || _isGoogleLoading || _isAppleLoading;
+    return SizedBox(
+      height: 52,
+      child: Stack(
+        alignment: Alignment.center,
+        children: [
+          Opacity(
+            opacity: isDisabled ? 0.6 : 1,
+            child: IgnorePointer(
+              ignoring: isDisabled,
+              child: SignInWithAppleButton(
+                onPressed: _signInWithApple,
+                style: SignInWithAppleButtonStyle.black,
+                height: 52,
+                borderRadius: BorderRadius.circular(26),
+              ),
+            ),
+          ),
+          if (_isAppleLoading)
+            const SizedBox(
+              width: 22,
+              height: 22,
+              child: CircularProgressIndicator(
+                strokeWidth: 2,
+                valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -153,6 +219,10 @@ class _LoginPageState extends State<LoginPage> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
+              if (_canUseAppleSignIn) ...[
+                _buildAppleButton(),
+                const SizedBox(height: 16),
+              ],
               _buildGoogleButton(),
               const SizedBox(height: 16),
               Row(
@@ -215,7 +285,10 @@ class _LoginPageState extends State<LoginPage> {
               ),
               const SizedBox(height: 24),
               FilledButton(
-                onPressed: (_isLoading || _isGoogleLoading) ? null : _submit,
+                onPressed:
+                    (_isLoading || _isGoogleLoading || _isAppleLoading)
+                        ? null
+                        : _submit,
                 child: _isLoading
                     ? const SizedBox(
                         width: 20,

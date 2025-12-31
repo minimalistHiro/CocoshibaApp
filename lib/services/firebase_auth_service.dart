@@ -1,11 +1,15 @@
+import 'dart:convert';
+import 'dart:math';
 import 'dart:typed_data';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cloud_functions/cloud_functions.dart';
+import 'package:crypto/crypto.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/foundation.dart';
 import 'package:google_sign_in/google_sign_in.dart';
+import 'package:sign_in_with_apple/sign_in_with_apple.dart';
 
 class FirebaseAuthService {
   FirebaseAuthService({
@@ -201,7 +205,12 @@ class FirebaseAuthService {
     final user = userCredential.user;
 
     if (user != null) {
-      await _ensureUserDocument(user, googleAccount: googleUser);
+      await _ensureUserDocument(
+        user,
+        displayName: googleUser.displayName,
+        email: googleUser.email,
+        photoUrl: googleUser.photoUrl,
+      );
     }
 
     return userCredential;
@@ -213,6 +222,71 @@ class FirebaseAuthService {
 
     final user = userCredential.user;
     if (user != null) {
+      await _updateLastLogin(user);
+    }
+
+    return userCredential;
+  }
+
+  Future<UserCredential> signInWithApple() async {
+    if (kIsWeb || defaultTargetPlatform != TargetPlatform.iOS) {
+      throw FirebaseAuthException(
+        code: 'unsupported-platform',
+        message: 'AppleログインはiOSのみ対応しています',
+      );
+    }
+
+    final rawNonce = _generateNonce();
+    final nonce = _sha256ofString(rawNonce);
+
+    late final AuthorizationCredentialAppleID appleCredential;
+    try {
+      appleCredential = await SignInWithApple.getAppleIDCredential(
+        scopes: [
+          AppleIDAuthorizationScopes.email,
+          AppleIDAuthorizationScopes.fullName,
+        ],
+        nonce: nonce,
+      );
+    } on SignInWithAppleAuthorizationException catch (e) {
+      if (e.code == AuthorizationErrorCode.canceled) {
+        throw FirebaseAuthException(
+          code: 'canceled',
+          message: 'Appleログインがキャンセルされました',
+        );
+      }
+      throw FirebaseAuthException(
+        code: 'apple-signin-failed',
+        message: 'Appleログインに失敗しました',
+      );
+    }
+
+    final identityToken = appleCredential.identityToken;
+    if (identityToken == null) {
+      throw FirebaseAuthException(
+        code: 'missing-identity-token',
+        message: 'Appleログインに失敗しました',
+      );
+    }
+
+    final oauthCredential = OAuthProvider('apple.com').credential(
+      idToken: identityToken,
+      rawNonce: rawNonce,
+    );
+
+    final userCredential = await _auth.signInWithCredential(oauthCredential);
+    final user = userCredential.user;
+    if (user != null) {
+      final displayName = _composeAppleDisplayName(appleCredential);
+      if (displayName.isNotEmpty &&
+          (user.displayName ?? '').trim().isEmpty) {
+        await user.updateDisplayName(displayName);
+      }
+      await _ensureUserDocument(
+        user,
+        displayName: displayName,
+        email: appleCredential.email,
+      );
       await _updateLastLogin(user);
     }
 
@@ -413,25 +487,27 @@ class FirebaseAuthService {
 
   Future<void> _ensureUserDocument(
     User user, {
-    GoogleSignInAccount? googleAccount,
+    String? displayName,
+    String? email,
+    String? photoUrl,
   }) async {
     final docRef = _firestore.collection('users').doc(user.uid);
     final snapshot = await docRef.get();
 
-    final displayName =
-        (user.displayName ?? googleAccount?.displayName ?? '').trim();
-    final email = (user.email ?? googleAccount?.email ?? '').trim();
-    final photoUrl = (user.photoURL ?? googleAccount?.photoUrl ?? '').trim();
+    final resolvedDisplayName =
+        _firstNonEmpty([user.displayName, displayName]);
+    final resolvedEmail = _firstNonEmpty([user.email, email]);
+    final resolvedPhotoUrl = _firstNonEmpty([user.photoURL, photoUrl]);
 
     if (!snapshot.exists) {
       await docRef.set({
-        'name': displayName.isNotEmpty ? displayName : '未設定',
-        'email': email,
+        'name': resolvedDisplayName.isNotEmpty ? resolvedDisplayName : '未設定',
+        'email': resolvedEmail,
         'ageGroup': '',
         'area': '',
         'gender': '未回答',
         'signUpPlatform': _signUpPlatform(),
-        'photoUrl': photoUrl.isNotEmpty ? photoUrl : null,
+        'photoUrl': resolvedPhotoUrl.isNotEmpty ? resolvedPhotoUrl : null,
         'isOwner': false,
         'isSubOwner': false,
         'points': 0,
@@ -453,19 +529,55 @@ class FirebaseAuthService {
     final currentSignUpPlatform =
         (data?['signUpPlatform'] as String?)?.trim() ?? '';
 
-    if (currentName.isEmpty && displayName.isNotEmpty) {
-      updates['name'] = displayName;
+    if (currentName.isEmpty && resolvedDisplayName.isNotEmpty) {
+      updates['name'] = resolvedDisplayName;
     }
-    if (currentEmail.isEmpty && email.isNotEmpty) {
-      updates['email'] = email;
+    if (currentEmail.isEmpty && resolvedEmail.isNotEmpty) {
+      updates['email'] = resolvedEmail;
     }
-    if (currentPhotoUrl.isEmpty && photoUrl.isNotEmpty) {
-      updates['photoUrl'] = photoUrl;
+    if (currentPhotoUrl.isEmpty && resolvedPhotoUrl.isNotEmpty) {
+      updates['photoUrl'] = resolvedPhotoUrl;
     }
     if (currentSignUpPlatform.isEmpty) {
       updates['signUpPlatform'] = _signUpPlatform();
     }
 
     await docRef.set(updates, SetOptions(merge: true));
+  }
+
+  String _firstNonEmpty(Iterable<String?> values) {
+    for (final value in values) {
+      final trimmed = value?.trim() ?? '';
+      if (trimmed.isNotEmpty) {
+        return trimmed;
+      }
+    }
+    return '';
+  }
+
+  String _composeAppleDisplayName(AuthorizationCredentialAppleID credential) {
+    final parts = <String>[];
+    final familyName = credential.familyName?.trim();
+    final givenName = credential.givenName?.trim();
+    if (familyName != null && familyName.isNotEmpty) {
+      parts.add(familyName);
+    }
+    if (givenName != null && givenName.isNotEmpty) {
+      parts.add(givenName);
+    }
+    return parts.join(' ').trim();
+  }
+
+  String _generateNonce([int length = 32]) {
+    const charset =
+        '0123456789ABCDEFGHIJKLMNOPQRSTUVXYZabcdefghijklmnopqrstuvwxyz-._';
+    final random = Random.secure();
+    return List.generate(length, (_) => charset[random.nextInt(charset.length)])
+        .join();
+  }
+
+  String _sha256ofString(String input) {
+    final bytes = utf8.encode(input);
+    return sha256.convert(bytes).toString();
   }
 }
