@@ -1,7 +1,13 @@
 import 'dart:math';
+import 'dart:io';
+import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:image_gallery_saver/image_gallery_saver.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:qr_flutter/qr_flutter.dart';
+import 'package:share_plus/share_plus.dart';
 
 import '../models/owner_contact_info.dart';
 import '../services/owner_settings_service.dart';
@@ -38,6 +44,7 @@ class _OwnerSettingsPageState extends State<OwnerSettingsPage> {
   bool _isLoading = true;
   bool _isSaving = false;
   bool _isContactSaving = false;
+  bool _isQrProcessing = false;
   String? _storeIdError;
 
   @override
@@ -234,11 +241,117 @@ class _OwnerSettingsPageState extends State<OwnerSettingsPage> {
     return true;
   }
 
-  void _regenerateStoreId() {
-    setState(() {
-      _storeIdController.text = _generateStoreId();
-      _storeIdError = null;
-    });
+  Future<Uint8List> _buildStoreIdQrPng(String storeId) async {
+    final painter = QrPainter(
+      data: storeId,
+      version: QrVersions.auto,
+      gapless: true,
+    );
+    final imageData = await painter.toImageData(
+      512,
+      format: ui.ImageByteFormat.png,
+    );
+    if (imageData == null) {
+      throw Exception('QR code render failed');
+    }
+    return imageData.buffer.asUint8List();
+  }
+
+  Future<File> _writeTempQrFile(Uint8List bytes) async {
+    final dir = await getTemporaryDirectory();
+    final filename = 'store_id_qr_${DateTime.now().millisecondsSinceEpoch}.png';
+    final file = File('${dir.path}/$filename');
+    await file.writeAsBytes(bytes, flush: true);
+    return file;
+  }
+
+  Future<void> _saveStoreIdQrCode() async {
+    if (_isQrProcessing) return;
+    if (!_validateStoreId()) return;
+    setState(() => _isQrProcessing = true);
+    final messenger = ScaffoldMessenger.of(context);
+    final storeId = _storeIdController.text.trim();
+
+    try {
+      final bytes = await _buildStoreIdQrPng(storeId);
+      final result = await ImageGallerySaver.saveImage(
+        bytes,
+        quality: 100,
+        name: 'store_id_qr_${DateTime.now().millisecondsSinceEpoch}',
+      );
+      final success = result == true ||
+          (result is Map &&
+              (result['isSuccess'] == true || result['is_success'] == true));
+      if (!mounted) return;
+      messenger.showSnackBar(
+        SnackBar(
+          content: Text(
+            success ? 'QRコード画像を保存しました' : 'QRコード画像の保存に失敗しました',
+          ),
+        ),
+      );
+    } catch (_) {
+      if (!mounted) return;
+      messenger.showSnackBar(
+        const SnackBar(content: Text('QRコード画像の保存に失敗しました')),
+      );
+    } finally {
+      if (mounted) setState(() => _isQrProcessing = false);
+    }
+  }
+
+  Future<void> _shareStoreIdQrCode() async {
+    if (_isQrProcessing) return;
+    if (!_validateStoreId()) return;
+    setState(() => _isQrProcessing = true);
+    final messenger = ScaffoldMessenger.of(context);
+    final storeId = _storeIdController.text.trim();
+
+    try {
+      final bytes = await _buildStoreIdQrPng(storeId);
+      final file = await _writeTempQrFile(bytes);
+      await Share.shareXFiles(
+        [XFile(file.path)],
+        text: '店舗ID: $storeId',
+      );
+    } catch (_) {
+      if (!mounted) return;
+      messenger.showSnackBar(
+        const SnackBar(content: Text('QRコード共有に失敗しました')),
+      );
+    } finally {
+      if (mounted) setState(() => _isQrProcessing = false);
+    }
+  }
+
+  Future<void> _showQrShareOptions() async {
+    if (_isQrProcessing) return;
+    await showModalBottomSheet<void>(
+      context: context,
+      builder: (context) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.share_outlined),
+              title: const Text('共有'),
+              onTap: () {
+                Navigator.of(context).pop();
+                _shareStoreIdQrCode();
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.download_outlined),
+              title: const Text('画像を保存'),
+              onTap: () {
+                Navigator.of(context).pop();
+                _saveStoreIdQrCode();
+              },
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   @override
@@ -367,12 +480,24 @@ class _OwnerSettingsPageState extends State<OwnerSettingsPage> {
                                 helperText:
                                     'Firebase UID と同じ形式 (28文字の英数字 + -_)',
                                 errorText: _storeIdError,
-                                suffixIcon: IconButton(
-                                  icon: const Icon(Icons.autorenew),
-                                  tooltip: '自動作成',
-                                  onPressed:
-                                      _isContactSaving ? null : _regenerateStoreId,
-                                ),
+                                suffixIcon: _isQrProcessing
+                                    ? const Padding(
+                                        padding: EdgeInsets.all(12),
+                                        child: SizedBox(
+                                          height: 20,
+                                          width: 20,
+                                          child: CircularProgressIndicator(
+                                            strokeWidth: 2,
+                                          ),
+                                        ),
+                                      )
+                                    : IconButton(
+                                        icon: const Icon(Icons.share_outlined),
+                                        tooltip: '共有オプション',
+                                        onPressed: _isContactSaving
+                                            ? null
+                                            : _showQrShareOptions,
+                                      ),
                               ),
                               maxLength: _storeIdLength,
                               inputFormatters: [

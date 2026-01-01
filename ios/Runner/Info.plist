@@ -39,6 +39,8 @@
 	<true/>
 	<key>NSCameraUsageDescription</key>
 	<string>このアプリではQRコードを読み取るためにカメラを使用します。</string>
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>QRコード画像を保存するために写真ライブラリを使用します。</string>
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
 	<key>UIBackgroundModes</key>
