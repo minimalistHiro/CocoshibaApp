@@ -1,13 +1,10 @@
 import 'dart:math';
-import 'dart:io';
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:image_gallery_saver/image_gallery_saver.dart';
-import 'package:path_provider/path_provider.dart';
 import 'package:qr_flutter/qr_flutter.dart';
-import 'package:share_plus/share_plus.dart';
 
 import '../models/owner_contact_info.dart';
 import '../services/owner_settings_service.dart';
@@ -257,14 +254,6 @@ class _OwnerSettingsPageState extends State<OwnerSettingsPage> {
     return imageData.buffer.asUint8List();
   }
 
-  Future<File> _writeTempQrFile(Uint8List bytes) async {
-    final dir = await getTemporaryDirectory();
-    final filename = 'store_id_qr_${DateTime.now().millisecondsSinceEpoch}.png';
-    final file = File('${dir.path}/$filename');
-    await file.writeAsBytes(bytes, flush: true);
-    return file;
-  }
-
   Future<void> _saveStoreIdQrCode() async {
     if (_isQrProcessing) return;
     if (!_validateStoreId()) return;
@@ -300,30 +289,6 @@ class _OwnerSettingsPageState extends State<OwnerSettingsPage> {
     }
   }
 
-  Future<void> _shareStoreIdQrCode() async {
-    if (_isQrProcessing) return;
-    if (!_validateStoreId()) return;
-    setState(() => _isQrProcessing = true);
-    final messenger = ScaffoldMessenger.of(context);
-    final storeId = _storeIdController.text.trim();
-
-    try {
-      final bytes = await _buildStoreIdQrPng(storeId);
-      final file = await _writeTempQrFile(bytes);
-      await Share.shareXFiles(
-        [XFile(file.path)],
-        text: '店舗ID: $storeId',
-      );
-    } catch (_) {
-      if (!mounted) return;
-      messenger.showSnackBar(
-        const SnackBar(content: Text('QRコード共有に失敗しました')),
-      );
-    } finally {
-      if (mounted) setState(() => _isQrProcessing = false);
-    }
-  }
-
   Future<void> _showQrShareOptions() async {
     if (_isQrProcessing) return;
     await showModalBottomSheet<void>(
@@ -332,14 +297,6 @@ class _OwnerSettingsPageState extends State<OwnerSettingsPage> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            ListTile(
-              leading: const Icon(Icons.share_outlined),
-              title: const Text('共有'),
-              onTap: () {
-                Navigator.of(context).pop();
-                _shareStoreIdQrCode();
-              },
-            ),
             ListTile(
               leading: const Icon(Icons.download_outlined),
               title: const Text('画像を保存'),

@@ -8,6 +8,7 @@ class EventCard extends StatelessWidget {
     required this.event,
     this.onTap,
     this.imageAspectRatio = 1,
+    this.titleMaxLines = 2,
     this.imageCacheWidth,
     this.imageCacheHeight,
   });
@@ -15,6 +16,7 @@ class EventCard extends StatelessWidget {
   final CalendarEvent event;
   final VoidCallback? onTap;
   final double imageAspectRatio;
+  final int titleMaxLines;
   final int? imageCacheWidth;
   final int? imageCacheHeight;
 
@@ -100,7 +102,7 @@ class EventCard extends StatelessWidget {
                 children: [
                   Text(
                     event.name,
-                    maxLines: 2,
+                    maxLines: titleMaxLines,
                     overflow: TextOverflow.ellipsis,
                     style: theme.textTheme.titleSmall?.copyWith(
                       fontWeight: FontWeight.bold,

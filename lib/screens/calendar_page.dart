@@ -581,6 +581,7 @@ class _EventList extends StatelessWidget {
                           child: EventListCard(
                             event: event,
                             isInterested: isInterested,
+                            showInterestButton: !event.isClosedDay,
                             showFavoriteButton: false,
                             onTap:
                                 event.isClosedDay ? null : () => onTap(event),

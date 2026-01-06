@@ -700,6 +700,7 @@ class _UpcomingEventsScroller extends StatelessWidget {
                 imageCacheWidth: imageCacheWidth > 0 ? imageCacheWidth : null,
                 imageCacheHeight:
                     imageCacheHeight > 0 ? imageCacheHeight : null,
+                titleMaxLines: 1,
               ),
             ),
           );
