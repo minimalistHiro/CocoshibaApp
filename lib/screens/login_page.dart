@@ -189,6 +189,7 @@ class _LoginPageState extends State<LoginPage> {
               child: SignInWithAppleButton(
                 onPressed: _signInWithApple,
                 style: SignInWithAppleButtonStyle.black,
+                text: 'Appleでサインイン',
                 height: 52,
                 borderRadius: BorderRadius.circular(26),
               ),

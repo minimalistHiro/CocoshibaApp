@@ -342,6 +342,7 @@ class _SignUpPageState extends State<SignUpPage> {
               child: SignInWithAppleButton(
                 onPressed: _signUpWithApple,
                 style: SignInWithAppleButtonStyle.black,
+                text: 'Appleで続ける',
                 height: 52,
                 borderRadius: BorderRadius.circular(26),
               ),
