@@ -17,6 +17,16 @@ service firebase.storage {
       );
     }
 
+    function isPrivileged() {
+      return isSignedIn() && (
+        ownerProfile().isOwner == true ||
+        ownerProfile().isSubOwner == true ||
+        ownerProfile().role == 'owner' ||
+        ownerProfile().role == 'subOwner' ||
+        (ownerProfile().roles is list && ownerProfile().roles.hasAny(['owner', 'subOwner']))
+      );
+    }
+
     // Public read for event images; owner can write/delete.
     match /event_images/{eventId}/{fileName} {
       allow read: if true;
@@ -35,7 +45,7 @@ service firebase.storage {
 
     match /menu_images/{menuId}/{fileName} {
       allow read: if true;
-      allow write, delete, create, update: if isOwner();
+      allow write, delete, create, update: if isPrivileged();
     }
   }
 }
