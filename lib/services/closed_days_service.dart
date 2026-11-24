@@ -1,5 +1,17 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 
+enum ClosedDayType {
+  regular('定休日'),
+  temporary('臨時休業');
+
+  const ClosedDayType(this.label);
+
+  final String label;
+
+  static ClosedDayType fromEventName(Object? name) =>
+      name == temporary.label ? temporary : regular;
+}
+
 class ClosedDaysService {
   ClosedDaysService({FirebaseFirestore? firestore})
       : _firestore = firestore ?? FirebaseFirestore.instance;
@@ -11,7 +23,7 @@ class ClosedDaysService {
 
   static const int _closedDayColorValue = 0xFF9E9E9E;
 
-  Future<Set<DateTime>> fetchClosedDays({
+  Future<Map<DateTime, ClosedDayType>> fetchClosedDays({
     required DateTime startDate,
     required DateTime endDate,
   }) async {
@@ -19,9 +31,7 @@ class ClosedDaysService {
       DateTime(startDate.year, startDate.month, startDate.day),
     );
     final endTimestamp = Timestamp.fromDate(
-      DateTime(endDate.year, endDate.month, endDate.day).add(
-        const Duration(days: 1),
-      ),
+      DateTime(endDate.year, endDate.month, endDate.day + 1),
     );
 
     final snapshot = await _eventsRef
@@ -29,64 +39,69 @@ class ClosedDaysService {
         .where('startDateTime', isLessThan: endTimestamp)
         .get();
 
-    final Set<DateTime> result = {};
+    final result = <DateTime, ClosedDayType>{};
     for (final doc in snapshot.docs) {
       final data = doc.data();
-      final isClosed = data['isClosedDay'] == true;
-      if (!isClosed) continue;
-      final start = data['startDateTime'];
-      if (start is Timestamp) {
-        result.add(_normalizeDate(start.toDate()));
-      } else if (start is DateTime) {
-        result.add(_normalizeDate(start));
+      if (data['isClosedDay'] != true) continue;
+      final date = _eventDate(data['startDateTime']);
+      if (date != null) {
+        result[date] = ClosedDayType.fromEventName(data['name']);
       }
     }
     return result;
   }
 
-  Future<void> saveClosedDays(Set<DateTime> dates) async {
-    final normalizedDates = dates.map(_normalizeDate).toSet();
-    final normalizedKeys = normalizedDates.map(_dateKey).toSet();
+  Future<void> saveClosedDayChanges(
+      Map<DateTime, ClosedDayType?> changes) async {
+    if (changes.isEmpty) return;
 
-    final existingSnapshot =
+    final snapshot =
         await _eventsRef.where('isClosedDay', isEqualTo: true).get();
-    final Map<String, QueryDocumentSnapshot<Map<String, dynamic>>> existingByKey =
-        {};
-    for (final doc in existingSnapshot.docs) {
-      final data = doc.data();
-      final start = data['startDateTime'];
-      DateTime? startDate;
-      if (start is Timestamp) {
-        startDate = _normalizeDate(start.toDate());
-      } else if (start is DateTime) {
-        startDate = _normalizeDate(start);
-      }
-      if (startDate != null) {
-        existingByKey[_dateKey(startDate)] = doc;
+    final existingByDate =
+        <DateTime, List<QueryDocumentSnapshot<Map<String, dynamic>>>>{};
+    for (final doc in snapshot.docs) {
+      final date = _eventDate(doc.data()['startDateTime']);
+      if (date != null && changes.containsKey(date)) {
+        existingByDate.putIfAbsent(date, () => []).add(doc);
       }
     }
 
-    final WriteBatch batch = _firestore.batch();
-
-    for (final entry in existingByKey.entries) {
-      if (!normalizedKeys.contains(entry.key)) {
-        batch.delete(entry.value.reference);
+    final batch = _firestore.batch();
+    for (final entry in changes.entries) {
+      final date = entry.key;
+      final type = entry.value;
+      final existing = existingByDate[date] ?? const [];
+      if (type == null) {
+        for (final doc in existing) {
+          batch.delete(doc.reference);
+        }
+        continue;
       }
-    }
 
-    for (final date in normalizedDates) {
-      final key = _dateKey(date);
-      if (existingByKey.containsKey(key)) continue;
-      final docRef = _eventsRef.doc();
-      final endDate = date.add(const Duration(hours: 23, minutes: 59));
-      batch.set(docRef, {
-        'name': '定休日',
+      final details = {
+        'name': type.label,
+        'content': '${type.label}のため休業です。',
+        'colorValue': _closedDayColorValue,
+      };
+      if (existing.isNotEmpty) {
+        batch.update(existing.first.reference, details);
+        for (final duplicate in existing.skip(1)) {
+          batch.delete(duplicate.reference);
+        }
+        continue;
+      }
+
+      final dateKey = DateTime.utc(date.year, date.month, date.day)
+          .toIso8601String()
+          .split('T')
+          .first;
+      final endDate = DateTime(date.year, date.month, date.day, 23, 59);
+      batch.set(_eventsRef.doc('closed_day_$dateKey'), {
+        ...details,
         'organizer': 'システム',
         'startDateTime': Timestamp.fromDate(date),
         'endDateTime': Timestamp.fromDate(endDate),
-        'content': '定休日のため休業です。',
         'imageUrls': const [],
-        'colorValue': _closedDayColorValue,
         'capacity': 0,
         'isClosedDay': true,
         'createdAt': FieldValue.serverTimestamp(),
@@ -96,11 +111,9 @@ class ClosedDaysService {
     await batch.commit();
   }
 
-  DateTime _normalizeDate(DateTime date) {
+  DateTime? _eventDate(Object? value) {
+    final date = value is Timestamp ? value.toDate() : value;
+    if (date is! DateTime) return null;
     return DateTime(date.year, date.month, date.day);
-  }
-
-  String _dateKey(DateTime date) {
-    return '${date.year.toString().padLeft(4, '0')}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
   }
 }

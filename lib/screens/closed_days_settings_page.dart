@@ -1,11 +1,11 @@
-import 'dart:math' as math;
-
 import 'package:flutter/material.dart';
 
 import '../services/closed_days_service.dart';
 
 class ClosedDaysSettingsPage extends StatefulWidget {
-  const ClosedDaysSettingsPage({super.key});
+  const ClosedDaysSettingsPage({super.key, this.service});
+
+  final ClosedDaysService? service;
 
   @override
   State<ClosedDaysSettingsPage> createState() => _ClosedDaysSettingsPageState();
@@ -15,9 +15,10 @@ class _ClosedDaysSettingsPageState extends State<ClosedDaysSettingsPage> {
   static final DateTime _startDate = DateTime(2025, 12, 1);
   static final DateTime _endDate = DateTime(2030, 12, 31);
 
-  final ClosedDaysService _service = ClosedDaysService();
-  final Set<DateTime> _persistedClosedDays = <DateTime>{};
-  final Set<DateTime> _selectedDates = <DateTime>{};
+  late final _service = widget.service ?? ClosedDaysService();
+  Map<DateTime, ClosedDayType> _persistedClosedDays = {};
+  final _selectedDates = <DateTime, ClosedDayType>{};
+  ClosedDayType _selectedType = ClosedDayType.regular;
 
   late final int _monthCount = (_endDate.year - _startDate.year) * 12 +
       (_endDate.month - _startDate.month) +
@@ -26,6 +27,7 @@ class _ClosedDaysSettingsPageState extends State<ClosedDaysSettingsPage> {
   late int _currentPage;
 
   bool _isLoading = true;
+  bool _loadFailed = false;
   bool _isSaving = false;
 
   @override
@@ -53,10 +55,11 @@ class _ClosedDaysSettingsPageState extends State<ClosedDaysSettingsPage> {
     return DateTime(_startDate.year, _startDate.month + index, 1);
   }
 
-  DateTime _normalize(DateTime date) =>
-      DateTime(date.year, date.month, date.day);
-
   Future<void> _loadClosedDays() async {
+    setState(() {
+      _isLoading = true;
+      _loadFailed = false;
+    });
     try {
       final closedDays = await _service.fetchClosedDays(
         startDate: _startDate,
@@ -64,9 +67,7 @@ class _ClosedDaysSettingsPageState extends State<ClosedDaysSettingsPage> {
       );
       if (!mounted) return;
       setState(() {
-        _persistedClosedDays
-          ..clear()
-          ..addAll(closedDays.map(_normalize));
+        _persistedClosedDays = closedDays;
         _selectedDates
           ..clear()
           ..addAll(_persistedClosedDays);
@@ -74,32 +75,44 @@ class _ClosedDaysSettingsPageState extends State<ClosedDaysSettingsPage> {
       });
     } catch (_) {
       if (!mounted) return;
-      setState(() => _isLoading = false);
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('定休日の取得に失敗しました')),
-      );
+      setState(() {
+        _isLoading = false;
+        _loadFailed = true;
+      });
     }
   }
 
   void _toggleDate(DateTime date) {
     if (_isSaving) return;
-    final normalized = _normalize(date);
     setState(() {
-      if (_selectedDates.contains(normalized)) {
-        _selectedDates.remove(normalized);
+      if (_selectedDates[date] == _selectedType) {
+        _selectedDates.remove(date);
       } else {
-        _selectedDates.add(normalized);
+        _selectedDates[date] = _selectedType;
       }
     });
   }
 
   Future<void> _confirmAndSave() async {
     if (_isSaving) return;
+    final changes = <DateTime, ClosedDayType?>{
+      for (final date in _persistedClosedDays.keys)
+        if (!_selectedDates.containsKey(date)) date: null,
+      for (final entry in _selectedDates.entries)
+        if (_persistedClosedDays[entry.key] != entry.value)
+          entry.key: entry.value,
+    };
+    final temporaryCount = _selectedDates.values
+        .where((type) => type == ClosedDayType.temporary)
+        .length;
+    final regularCount = _selectedDates.length - temporaryCount;
     final shouldSave = await showDialog<bool>(
           context: context,
           builder: (context) => AlertDialog(
             title: const Text('確認'),
-            content: Text('選択中の${_selectedDates.length}日を定休日として保存しますか？'),
+            content: Text(
+              '休業日の設定を保存しますか？\n定休日 $regularCount日、臨時休業 $temporaryCount日',
+            ),
             actions: [
               TextButton(
                 onPressed: () => Navigator.of(context).pop(false),
@@ -114,27 +127,24 @@ class _ClosedDaysSettingsPageState extends State<ClosedDaysSettingsPage> {
         ) ??
         false;
     if (!mounted || !shouldSave) return;
-    await _save();
+    await _save(changes);
   }
 
-  Future<void> _save() async {
+  Future<void> _save(Map<DateTime, ClosedDayType?> changes) async {
     if (_isSaving) return;
     setState(() => _isSaving = true);
     final messenger = ScaffoldMessenger.of(context);
     try {
-      await _service.saveClosedDays(_selectedDates);
+      await _service.saveClosedDayChanges(changes);
       if (!mounted) return;
-      _persistedClosedDays
-        ..clear()
-        ..addAll(_selectedDates);
       messenger.showSnackBar(
-        SnackBar(content: Text('定休日を${_selectedDates.length}件保存しました')),
+        const SnackBar(content: Text('休業日の設定を保存しました')),
       );
       Navigator.of(context).pop();
     } catch (_) {
       if (!mounted) return;
       messenger.showSnackBar(
-        const SnackBar(content: Text('定休日の保存に失敗しました')),
+        const SnackBar(content: Text('休業日の保存に失敗しました')),
       );
     } finally {
       if (mounted) setState(() => _isSaving = false);
@@ -144,16 +154,14 @@ class _ClosedDaysSettingsPageState extends State<ClosedDaysSettingsPage> {
   @override
   Widget build(BuildContext context) {
     final currentMonth = _monthForIndex(_currentPage);
-    final screenHeight = MediaQuery.of(context).size.height;
-    final calendarHeight = math.max(screenHeight * 0.55, 500.0);
 
     return Scaffold(
       appBar: AppBar(
         title: const Text('定休日設定'),
       ),
       body: SafeArea(
-        child: _isLoading
-            ? const Center(child: CircularProgressIndicator())
+        child: _isLoading || _loadFailed
+            ? _buildLoadStatus()
             : Column(
                 children: [
                   Padding(
@@ -162,8 +170,27 @@ class _ClosedDaysSettingsPageState extends State<ClosedDaysSettingsPage> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          '休業日にしたい日をカレンダーから複数選択して保存してください。',
+                          '休業の種類を選び、カレンダーで日付を選択してください。',
                           style: Theme.of(context).textTheme.bodyMedium,
+                        ),
+                        const SizedBox(height: 8),
+                        SizedBox(
+                          width: double.infinity,
+                          child: SegmentedButton<ClosedDayType>(
+                            segments: [
+                              for (final type in ClosedDayType.values)
+                                ButtonSegment(
+                                  value: type,
+                                  label: Text(type.label),
+                                ),
+                            ],
+                            selected: {_selectedType},
+                            onSelectionChanged: _isSaving
+                                ? null
+                                : (selection) => setState(
+                                      () => _selectedType = selection.single,
+                                    ),
+                          ),
                         ),
                         const SizedBox(height: 12),
                         Row(
@@ -212,8 +239,7 @@ class _ClosedDaysSettingsPageState extends State<ClosedDaysSettingsPage> {
                       ],
                     ),
                   ),
-                  SizedBox(
-                    height: calendarHeight,
+                  Expanded(
                     child: PageView.builder(
                       controller: _pageController,
                       itemCount: _monthCount,
@@ -234,7 +260,6 @@ class _ClosedDaysSettingsPageState extends State<ClosedDaysSettingsPage> {
                               Expanded(
                                 child: _ClosedDaysMonthGrid(
                                   month: month,
-                                  persistedClosedDays: _persistedClosedDays,
                                   selectedDates: _selectedDates,
                                   onToggleDate: _toggleDate,
                                 ),
@@ -288,6 +313,23 @@ class _ClosedDaysSettingsPageState extends State<ClosedDaysSettingsPage> {
       ),
     );
   }
+
+  Widget _buildLoadStatus() {
+    return Center(
+      child: _isLoading
+          ? const CircularProgressIndicator()
+          : Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Text('休業日の取得に失敗しました'),
+                TextButton(
+                  onPressed: _loadClosedDays,
+                  child: const Text('再読み込み'),
+                ),
+              ],
+            ),
+    );
+  }
 }
 
 class _WeekdayHeader extends StatelessWidget {
@@ -322,25 +364,13 @@ class _WeekdayHeader extends StatelessWidget {
 class _ClosedDaysMonthGrid extends StatelessWidget {
   const _ClosedDaysMonthGrid({
     required this.month,
-    required this.persistedClosedDays,
     required this.selectedDates,
     required this.onToggleDate,
   });
 
   final DateTime month;
-  final Set<DateTime> persistedClosedDays;
-  final Set<DateTime> selectedDates;
+  final Map<DateTime, ClosedDayType> selectedDates;
   final ValueChanged<DateTime> onToggleDate;
-
-  bool _isSelected(DateTime date) {
-    final normalized = DateTime(date.year, date.month, date.day);
-    return selectedDates.contains(normalized);
-  }
-
-  bool _isPersisted(DateTime date) {
-    final normalized = DateTime(date.year, date.month, date.day);
-    return persistedClosedDays.contains(normalized);
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -353,7 +383,7 @@ class _ClosedDaysMonthGrid extends StatelessWidget {
     final todayDate = DateTime(today.year, today.month, today.day);
 
     return GridView.builder(
-      physics: const NeverScrollableScrollPhysics(),
+      padding: EdgeInsets.zero,
       gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
         crossAxisCount: 7,
         crossAxisSpacing: 4,
@@ -368,10 +398,8 @@ class _ClosedDaysMonthGrid extends StatelessWidget {
         final DateTime? cellDate =
             isInMonth ? DateTime(month.year, month.month, dayNumber) : null;
         final bool isToday = cellDate != null && cellDate == todayDate;
-        final bool isSelected =
-            cellDate != null && isInMonth && _isSelected(cellDate);
-        final bool isPersisted =
-            cellDate != null && isInMonth && _isPersisted(cellDate);
+        final type = selectedDates[cellDate];
+        final isSelected = type != null;
         final textColor = weekdayIndex == 0
             ? Colors.red
             : weekdayIndex == 6
@@ -387,16 +415,14 @@ class _ClosedDaysMonthGrid extends StatelessWidget {
             ),
             color: !isInMonth
                 ? Colors.transparent
-                : isPersisted
+                : isSelected
                     ? Colors.grey.shade300
-                    : isSelected
-                        ? Colors.blue.shade50
                     : isToday
                         ? Colors.blue.shade50
                         : Colors.white,
           ),
           child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 8),
+            padding: const EdgeInsets.symmetric(horizontal: 3, vertical: 4),
             child: Column(
               mainAxisAlignment: MainAxisAlignment.start,
               children: [
@@ -411,43 +437,32 @@ class _ClosedDaysMonthGrid extends StatelessWidget {
                         color: isInMonth ? textColor : Colors.grey.shade400,
                       ),
                 ),
-                const SizedBox(height: 8),
-                if (isPersisted)
-                  Container(
-                    padding:
-                        const EdgeInsets.symmetric(vertical: 4, horizontal: 6),
-                    decoration: BoxDecoration(
-                      color: Colors.grey.shade500.withOpacity(0.2),
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: Text(
-                      '定休日',
-                      style: TextStyle(
-                        fontSize: 9,
-                        color: Colors.grey.shade800,
-                        fontWeight: FontWeight.w600,
+                if (type != null) ...[
+                  const SizedBox(height: 4),
+                  Flexible(
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        vertical: 2,
+                        horizontal: 2,
+                      ),
+                      decoration: BoxDecoration(
+                        color: Colors.grey.shade200,
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: FittedBox(
+                        fit: BoxFit.scaleDown,
+                        child: Text(
+                          type.label,
+                          style: TextStyle(
+                            fontSize: 9,
+                            color: Colors.grey.shade800,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
                       ),
                     ),
-                  )
-                else if (isSelected)
-                  Container(
-                    padding:
-                        const EdgeInsets.symmetric(vertical: 4, horizontal: 6),
-                    decoration: BoxDecoration(
-                      color: Colors.blue.shade100,
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: Text(
-                      '選択中',
-                      style: TextStyle(
-                        fontSize: 9,
-                        color: Colors.blue.shade800,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  )
-                else
-                  const Spacer(),
+                  ),
+                ],
               ],
             ),
           ),

@@ -100,7 +100,7 @@ class _CalendarPageState extends State<CalendarPage> {
   void _openEventDetail(CalendarEvent event) {
     if (event.isClosedDay) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('定休日のため詳細はありません')),
+        SnackBar(content: Text('${event.name}のため詳細はありません')),
       );
       return;
     }
@@ -434,8 +434,11 @@ class _MonthGrid extends StatelessWidget {
                 ? Colors.lightBlue.shade50
                 : Colors.white;
 
-        final events =
-            isInMonth ? eventsForMonth[dayNumber] ?? const [] : const [];
+        final events = eventsForMonth[dayNumber] ?? const <CalendarEvent>[];
+        final visibleEvents = [
+          ...events.where((event) => event.isClosedDay),
+          ...events.where((event) => !event.isClosedDay),
+        ].take(2);
 
         Widget cellContent = DecoratedBox(
           decoration: BoxDecoration(
@@ -460,36 +463,45 @@ class _MonthGrid extends StatelessWidget {
                 ),
                 const SizedBox(height: 4),
                 if (events.isNotEmpty)
-                  Column(
-                    children: events
-                        .take(2)
-                        .map(
-                          (event) => Padding(
+                  Flexible(
+                    child: Column(
+                      children: visibleEvents.map((event) {
+                        final label = Text(
+                          event.name,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            fontSize: 9,
+                            fontWeight: FontWeight.bold,
+                            color: event.isClosedDay
+                                ? Colors.grey.shade800
+                                : event.color.withOpacity(0.9),
+                          ),
+                        );
+                        return Flexible(
+                          child: Padding(
                             padding: const EdgeInsets.only(bottom: 2),
                             child: Container(
                               width: double.infinity,
-                              padding: const EdgeInsets.symmetric(
+                              padding: EdgeInsets.symmetric(
                                 vertical: 2,
-                                horizontal: 6,
+                                horizontal: event.isClosedDay ? 2 : 6,
                               ),
                               decoration: BoxDecoration(
                                 color: event.color.withOpacity(0.15),
                                 borderRadius: BorderRadius.circular(8),
                               ),
-                              child: Text(
-                                event.name,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: theme.textTheme.bodySmall?.copyWith(
-                                  fontSize: 9,
-                                  fontWeight: FontWeight.bold,
-                                  color: event.color.withOpacity(0.9),
-                                ),
-                              ),
+                              child: event.isClosedDay
+                                  ? FittedBox(
+                                      fit: BoxFit.scaleDown,
+                                      child: label,
+                                    )
+                                  : label,
                             ),
                           ),
-                        )
-                        .toList(),
+                        );
+                      }).toList(),
+                    ),
                   )
                 else
                   const SizedBox(height: 20),
